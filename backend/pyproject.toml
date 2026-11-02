@@ -1,0 +1,20 @@
+# Tells pip how to build and install this project
+[build-system]
+requires = ["setuptools>=84"]
+build-backend = "setuptools.build_meta"
+
+# Project metadata and the direct dependencies, pinned to exact versions
+[project]
+name = "alibi"
+version = "0.1.0"
+description = "Backend of Alibi, a multiplayer murder mystery game with AI suspects and detectives."
+requires-python = ">=3.15"
+dependencies = [
+    # Web framework and the ASGI server that runs it
+    "fastapi==0.162.0",
+    "uvicorn==0.54.0",
+]
+
+# The importable package lives in 'src/alibi/'
+[tool.setuptools.packages.find]
+where = ["src"]
