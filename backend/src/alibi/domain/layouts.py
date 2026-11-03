@@ -27,6 +27,37 @@ class Layout:
         return result
 
 
+# Layout with 6 Rooms, variant A: Two rows of three Rooms, with the Living Room and the Hall at the center.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +--------------+-------------------+--------------+
+#   |    Study     |    Living Room    |   Kitchen    |
+#   |              |                   |              |
+#   +--------------+-------------------+--------------+
+#   |   Bedroom    |       Hall        | Dining Room  |
+#   |              |                   |              |
+#   +--------------+-------------------+--------------+
+LAYOUT_6A = Layout(
+    id = "6A",
+    rooms = (
+        Room(id = "study", name = "Study", x_min = -10, x_max = -4, y_min = -5.5, y_max = 0),
+        Room(id = "living_room", name = "Living Room", x_min = -4, x_max = 4, y_min = -5.5, y_max = 0),
+        Room(id = "kitchen", name = "Kitchen", x_min = 4, x_max = 10, y_min = -5.5, y_max = 0),
+        Room(id = "bedroom", name = "Bedroom", x_min = -10, x_max = -4, y_min = 0, y_max = 5.5),
+        Room(id = "hall", name = "Hall", x_min = -4, x_max = 4, y_min = 0, y_max = 5.5),
+        Room(id = "dining_room", name = "Dining Room", x_min = 4, x_max = 10, y_min = 0, y_max = 5.5),
+    ),
+    doors = (
+        ("study", "living_room"),
+        ("living_room", "hall"),
+        ("bedroom", "hall"),
+        ("hall", "dining_room"),
+        ("living_room", "kitchen"),
+        ("kitchen", "dining_room"),
+    )
+)
+
+
 # Layout with 7 Rooms, variant A: Two rows of Rooms with a Garden Terrace on the East side.
 # X grows to the right and Y grows downwards in this drawing. All values are in meters.
 #
