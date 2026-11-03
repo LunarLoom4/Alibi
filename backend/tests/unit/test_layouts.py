@@ -1,4 +1,5 @@
 import pytest
+from itertools import combinations
 from alibi.domain.layouts import Layout, LAYOUT_7A
 from alibi.domain.types import Room
 
@@ -6,7 +7,7 @@ from alibi.domain.types import Room
 # Every Layout written so far. The tests below run once for each of them.
 ALL_LAYOUTS = [LAYOUT_7A]
 
-# Name each test run after its Layout ID, so a failure reads 'test_...[7A]' instead of 'test_...[layout0]'.
+# Name each test run after its Layout ID, so a failure reads 'test_...[7A]' instead of the default 'test_...[layout0]'.
 LAYOUT_IDS = [layout.id for layout in ALL_LAYOUTS]
 
 
@@ -26,6 +27,34 @@ def rooms_share_wall(room_a: Room, room_b: Room) -> bool:
 
     return False
 
+# Helper function to check that two Rooms cover a common area larger than zero.
+def rooms_overlap(room_a: Room, room_b: Room) -> bool:
+    # The Rectangles must overlap along X AND along Y. Touching along a Wall or at a corner overlaps by zero.
+    overlap_along_x = min(room_a.x_max, room_b.x_max) > max(room_a.x_min, room_b.x_min)
+    overlap_along_y = min(room_a.y_max, room_b.y_max) > max(room_a.y_min, room_b.y_min)
+
+    return overlap_along_x and overlap_along_y
+
+
+# Defining a Test Function to check that every Room of a Layout has a unique ID.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_room_ids_are_unique(layout: Layout):
+    room_ids = [room.id for room in layout.rooms]
+
+    assert len(room_ids) == len(set(room_ids)), f"Layout '{layout.id}' repeats a Room ID."
+
+# Defining a Test Function to check that every Room has a width and a depth larger than zero.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_rooms_have_positive_size(layout: Layout):
+    for room in layout.rooms:
+        assert room.x_min < room.x_max, f"'{room.id}' has no width."
+        assert room.y_min < room.y_max, f"'{room.id}' has no depth."
+
+# Defining a Test Function to check that no two Rooms of a Layout cover the same Floor area.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_rooms_never_overlap(layout: Layout):
+    for room_a, room_b in combinations(layout.rooms, 2):
+        assert not rooms_overlap(room_a, room_b), f"'{room_a.id}' overlaps '{room_b.id}'."
 
 # Defining a Test Function to check that every Door joins two Rooms of the same Layout.
 @pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
@@ -92,7 +121,7 @@ def test_neighbors_match_the_doors(layout: Layout):
 
 
 # Every way two Rooms can sit on a Floor Plan.
-# Th Second Room is a Rectangle (x_min, x_max, y_min, y_max) and is associated with an expected answer of 'rooms_share_wall'.
+# The Second Room is a Rectangle (x_min, x_max, y_min, y_max) and is associated with an expected answer of 'rooms_share_wall'.
 # The first Room is always the 4 m x 4 m square at the origin.
 WALL_CASES = [
     pytest.param(( 4, 8,  0, 4), True,  id = "Side by side, full Wall"),
@@ -115,3 +144,33 @@ def test_rooms_share_wall_on_every_arrangement(dimensions: tuple, expected: bool
 
     assert rooms_share_wall(squareRoom, otherRoom) == expected
     assert rooms_share_wall(otherRoom, squareRoom) == expected
+
+
+# Every way two Rooms can sit on a Floor Plan.
+# The second Room is a Rectangle (x_min, x_max, y_min, y_max) with the expected answer of 'rooms_overlap'.
+# The first Room is always the 4 m x 4 m square at the origin.
+OVERLAP_CASES = [
+    pytest.param(( 0, 4,  0, 4), True,  id = "The same Rectangle"),
+    pytest.param(( 1, 3,  1, 3), True,  id = "One inside the other"),
+    pytest.param((-1, 5,  1, 3), True,  id = "Crossing like a plus sign"),
+    pytest.param(( 2, 6,  2, 6), True,  id = "Overlapping at one corner"),
+    pytest.param(( 2, 6,  0, 4), True,  id = "Side by side, overlapping by half"),
+    pytest.param(( 0, 4,  2, 6), True,  id = "One above the other, overlapping by half"),
+    pytest.param(( 4, 8,  0, 4), False, id = "Side by side, sharing a full Wall"),
+    pytest.param(( 0, 4,  4, 8), False, id = "One above the other, sharing a full Wall"),
+    pytest.param(( 4, 8,  4, 8), False, id = "Meeting ONLY at a corner"),
+    pytest.param(( 5, 8,  0, 4), False, id = "Side by side with a gap"),
+    pytest.param(( 0, 4,  6, 8), False, id = "One above the other with a gap"),
+    pytest.param(( 6, 8,  6, 8), False, id = "Apart along X AND along Y"),
+]
+
+# Defining a Test Function to check 'rooms_overlap' on every arrangement, with the Rooms in both orders.
+@pytest.mark.parametrize("dimensions, expected", OVERLAP_CASES)
+def test_rooms_overlap_on_every_arrangement(dimensions: tuple, expected: bool):
+    squareRoom = Room(id = "a", name = "A", x_min = 0, x_max = 4, y_min = 0, y_max = 4)
+
+    x_min, x_max, y_min, y_max = dimensions
+    otherRoom = Room(id = "b", name = "B", x_min = x_min, x_max = x_max, y_min = y_min, y_max = y_max)
+
+    assert rooms_overlap(squareRoom, otherRoom) == expected
+    assert rooms_overlap(otherRoom, squareRoom) == expected
