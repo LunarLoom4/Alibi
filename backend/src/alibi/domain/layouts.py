@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from .types import Room
 
 
-# Defining a House Layout: its Rooms and the Doors between them.
+# Defining a House Layout -- its Rooms and the Doors between them.
 # Each Door is a pair of Room IDs, and a Suspect can walk through it both ways (CG-15).
 # Every Door is a solid Door kept closed, and every Curtain is drawn at night.
 # Thus, a Suspect sees ONLY the people inside their own Room (KN-3).
@@ -157,3 +157,12 @@ LAYOUT_7A = Layout(
         ("dining_room", "garden_terrace"),
     )
 )
+
+
+
+# Every Layout, grouped by its Number of Rooms (CG-2).
+# A Case with S Suspects picks one of the Layouts listed under count_rooms(S).
+LAYOUTS = {
+    6: (LAYOUT_6A, LAYOUT_6B, LAYOUT_6C),
+    7: (LAYOUT_7A,),
+}
