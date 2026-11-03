@@ -126,15 +126,17 @@ LAYOUT_6C = Layout(
 )
 
 
-# Layout with 7 Rooms, variant A: Two rows of Rooms with a Garden Terrace on the East side.
+# Layout with 7 Rooms, variant A:
+# a. Two rows of Rooms with a Garden Terrace on the East side.
+# b. he Kitchen opens into the Hall and the Dining Room, and the Garden Terrace opens ONLY into the Dining Room.
 # X grows to the right and Y grows downwards in this drawing. All values are in meters.
 #
 #   +--------------+--------------+--------------+
 #   |    Study     |   Library    |   Kitchen    |
 #   |              |              |              +--------------+
 #   +--------------+--------------+----+---------+              |
-#   |   Bedroom    |        Hall       | Dining  |    Garden    |
-#   |              |                   |  Room   |    Terrace   |
+#   |   Bedroom    |       Hall        | Dining  |    Garden    |
+#   |              |                   |  Room   |   Terrace    |
 #   +--------------+-------------------+---------+--------------+
 LAYOUT_7A = Layout(
     id = "7A",
@@ -158,11 +160,46 @@ LAYOUT_7A = Layout(
     )
 )
 
+# Layout with 7 Rooms, variant B:
+# a. A long Hall from West to East, with three Rooms on each side of it.
+# b. Every Room opens into the Hall, and the Kitchen also has a serving Door into the Dining Room.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +--------------+--------------+-------------------+
+#   |   Kitchen    | Dining Room  |      Library      |
+#   |              |              |                   |
+#   +--------------+--------------+-------------------+
+#   |                      Hall                       |
+#   +-------------------+--------------+--------------+
+#   |    Living Room    |    Study     |   Bedroom    |
+#   |                   |              |              |
+#   +-------------------+--------------+--------------+
+LAYOUT_7B = Layout(
+    id = "7B",
+    rooms = (
+        Room(id = "kitchen", name = "Kitchen", x_min = -10, x_max = -4, y_min = -6.5, y_max = -1.5),
+        Room(id = "dining_room", name = "Dining Room", x_min = -4, x_max = 2, y_min = -6.5, y_max = -1.5),
+        Room(id = "library", name = "Library", x_min = 2, x_max = 10, y_min = -6.5, y_max = -1.5),
+        Room(id = "hall", name = "Hall", x_min = -10, x_max = 10, y_min = -1.5, y_max = 1.5),
+        Room(id = "living_room", name = "Living Room", x_min = -10, x_max = -2, y_min = 1.5, y_max = 6.5),
+        Room(id = "study", name = "Study", x_min = -2, x_max = 4, y_min = 1.5, y_max = 6.5),
+        Room(id = "bedroom", name = "Bedroom", x_min = 4, x_max = 10, y_min = 1.5, y_max = 6.5),
+    ),
+    doors = (
+        ("hall", "kitchen"),
+        ("hall", "dining_room"),
+        ("hall", "library"),
+        ("hall", "living_room"),
+        ("hall", "study"),
+        ("hall", "bedroom"),
+        ("kitchen", "dining_room"),
+    )
+)
 
 
 # Every Layout, grouped by its Number of Rooms (CG-2).
 # A Case with S Suspects picks one of the Layouts listed under count_rooms(S).
 LAYOUTS = {
     6: (LAYOUT_6A, LAYOUT_6B, LAYOUT_6C),
-    7: (LAYOUT_7A,),
+    7: (LAYOUT_7A, LAYOUT_7B),
 }
