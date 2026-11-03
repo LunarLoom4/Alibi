@@ -27,7 +27,9 @@ class Layout:
         return result
 
 
-# Layout with 6 Rooms, variant A: Two rows of three Rooms, with the Living Room and the Hall at the center.
+# Layout with 6 Rooms, variant A:
+# a. Two rows of three Rooms, with the Living Room and the Hall at the center.
+# b. The Kitchen has two Doors: one into the Dining Room for serving, and one into the Living Room.
 # X grows to the right and Y grows downwards in this drawing. All values are in meters.
 #
 #   +--------------+-------------------+--------------+
@@ -54,6 +56,38 @@ LAYOUT_6A = Layout(
         ("hall", "dining_room"),
         ("living_room", "kitchen"),
         ("kitchen", "dining_room"),
+    )
+)
+
+# Layout with 6 Rooms, variant B:
+# a. A Center Hall from the Front Door to the back, with two Rooms on each side and a Kitchen Wing on the East side.
+# b. The Living Room and the Study share a connecting Door, and the Kitchen opens ONLY into the Dining Room.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +-----------------+----------+-----------------+------------+
+#   |   Living Room   |          |   Dining Room   |  Kitchen   |
+#   |                 |          |                 |            |
+#   +-----------------+   Hall   +-----------------+------------+
+#   |      Study      |          |     Library     |
+#   |                 |          |                 |
+#   +-----------------+----------+-----------------+
+LAYOUT_6B = Layout(
+    id = "6B",
+    rooms = (
+        Room(id = "living_room", name = "Living Room", x_min = -9, x_max = -2, y_min = -6, y_max = 0),
+        Room(id = "hall", name = "Hall", x_min = -2, x_max = 2, y_min = -6, y_max = 6),
+        Room(id = "dining_room", name = "Dining Room", x_min = 2, x_max = 9, y_min = -6, y_max = 0),
+        Room(id = "kitchen", name = "Kitchen", x_min = 9, x_max = 14, y_min = -6, y_max = 0),
+        Room(id = "study", name = "Study", x_min = -9, x_max = -2, y_min = 0, y_max = 6),
+        Room(id = "library", name = "Library", x_min = 2, x_max = 9, y_min = 0, y_max = 6),
+    ),
+    doors = (
+        ("living_room", "hall"),
+        ("study", "hall"),
+        ("hall", "dining_room"),
+        ("hall", "library"),
+        ("living_room", "study"),
+        ("dining_room", "kitchen"),
     )
 )
 
