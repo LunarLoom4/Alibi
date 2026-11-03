@@ -128,7 +128,7 @@ LAYOUT_6C = Layout(
 
 # Layout with 7 Rooms, variant A:
 # a. Two rows of Rooms with a Garden Terrace on the East side.
-# b. he Kitchen opens into the Hall and the Dining Room, and the Garden Terrace opens ONLY into the Dining Room.
+# b. The Kitchen opens into the Hall and the Dining Room, and the Garden Terrace opens ONLY into the Dining Room.
 # X grows to the right and Y grows downwards in this drawing. All values are in meters.
 #
 #   +--------------+--------------+--------------+
@@ -234,9 +234,49 @@ LAYOUT_7C = Layout(
 )
 
 
+# Layout with 8 Rooms, variant A:
+# a. Two rows of four Rooms, with the Library and the Hall in the wider second column.
+# b. The Billiard Room opens ONLY into the Library, and the Music Room connects the Library and the Living Room.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +--------------+-------------------+--------------+--------------+
+#   |   Billiard   |      Library      |  Music Room  |   Kitchen    |
+#   |     Room     |                   |              |              |
+#   +--------------+-------------------+--------------+--------------+
+#   |    Study     |       Hall        | Living Room  | Dining Room  |
+#   |              |                   |              |              |
+#   +--------------+-------------------+--------------+--------------+
+LAYOUT_8A = Layout(
+    id = "8A",
+    rooms = (
+        Room(id = "billiard_room", name = "Billiard Room", x_min = -13, x_max = -7, y_min = -5.5, y_max = 0),
+        Room(id = "library", name = "Library", x_min = -7, x_max = 1, y_min = -5.5, y_max = 0),
+        Room(id = "music_room", name = "Music Room", x_min = 1, x_max = 7, y_min = -5.5, y_max = 0),
+        Room(id = "kitchen", name = "Kitchen", x_min = 7, x_max = 13, y_min = -5.5, y_max = 0),
+        Room(id = "study", name = "Study", x_min = -13, x_max = -7, y_min = 0, y_max = 5.5),
+        Room(id = "hall", name = "Hall", x_min = -7, x_max = 1, y_min = 0, y_max = 5.5),
+        Room(id = "living_room", name = "Living Room", x_min = 1, x_max = 7, y_min = 0, y_max = 5.5),
+        Room(id = "dining_room", name = "Dining Room", x_min = 7, x_max = 13, y_min = 0, y_max = 5.5),
+    ),
+    doors = (
+        ("study", "hall"),
+        ("hall", "library"),
+        ("hall", "living_room"),
+        ("library", "billiard_room"),
+        ("library", "music_room"),
+        ("music_room", "living_room"),
+        ("living_room", "dining_room"),
+        ("dining_room", "kitchen"),
+    )
+)
+
+
+
+
 # Every Layout, grouped by its Number of Rooms (CG-2).
 # A Case with S Suspects picks one of the Layouts listed under count_rooms(S).
 LAYOUTS = {
     6: (LAYOUT_6A, LAYOUT_6B, LAYOUT_6C),
     7: (LAYOUT_7A, LAYOUT_7B, LAYOUT_7C),
+    8: (LAYOUT_8A,),
 }

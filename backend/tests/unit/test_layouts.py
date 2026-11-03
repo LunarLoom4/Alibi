@@ -1,3 +1,4 @@
+import re
 import pytest
 from itertools import combinations
 
@@ -23,7 +24,7 @@ def shared_wall_length(room_a: Room, room_b: Room) -> float:
     # Rooms side by side: They touch on a vertical Wall and overlap along Y.
     if room_a.x_max == room_b.x_min or room_b.x_max == room_a.x_min:
 
-        # Minimum of maximum y's should be greater than the maximum of minimum y's. A negative value is a gap, so it counts as 0.
+        # Minimum of maximum y's minus the maximum of minimum y's. A negative value is a gap, so it counts as 0.
         return max(0, min(room_a.y_max, room_b.y_max) - max(room_a.y_min, room_b.y_min))
 
     # Rooms one above the other: They touch on a horizontal Wall and overlap along X.
@@ -156,13 +157,20 @@ def test_cg2_layouts_are_grouped_by_room_count():
         for layout in layouts:
             assert len(layout.rooms) == num_rooms, f"Layout '{layout.id}' has {len(layout.rooms)} Rooms, not {num_rooms}."
 
-            # A Layout ID is its Number of Rooms followed by the variant letter A, B or C, like '6B'.
-            assert layout.id in (f"{num_rooms}A", f"{num_rooms}B", f"{num_rooms}C"), f"Layout '{layout.id}' is listed under {num_rooms} Rooms."
+            # A Layout ID is its Number of Rooms followed by one or more capital variant letters, like '6B', '8AA', etc.
+            assert re.fullmatch(f"{num_rooms}[A-Z]+", layout.id), f"Layout '{layout.id}' is listed under {num_rooms} Rooms."
+
+# Defining a Test Function to check that every allowed Number of Suspects has at least one Layout to play in (CG-2).
+@pytest.mark.parametrize("num_suspects", range(MIN_SUSPECTS, MAX_SUSPECTS + 1))
+def test_cg2_every_suspect_count_has_a_layout(num_suspects: int):
+    num_rooms = count_rooms(num_suspects)
+
+    assert LAYOUTS.get(num_rooms), f"No Layout has {num_rooms} Rooms for {num_suspects} Suspects."
 
 
 # Every way two Rooms can sit on a Floor Plan.
 # The First Room is always the 4 m x 4 m square at the origin.
-# The Second Room is a Rectangle (x_min, x_max, y_min, y_max) and is associated with an expected answer of 'rooms_share_wall'.
+# The Second Room is a Rectangle (x_min, x_max, y_min, y_max) and is associated with an expected answer of 'shared_wall_length' in meters.
 WALL_CASES = [
     pytest.param(( 4, 8,  0,   4), 4,   id = "Side by side, full Wall"),
     pytest.param(( 4, 8,  2,   6), 2,   id = "Side by side, part of a Wall"),
