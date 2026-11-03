@@ -29,7 +29,7 @@ class Layout:
 
 # Layout with 6 Rooms, variant A:
 # a. Two rows of three Rooms, with the Living Room and the Hall at the center.
-# b. The Kitchen has two Doors: one into the Dining Room for serving, and one into the Living Room.
+# b. The Kitchen has two Doors: One into the Dining Room for serving, and one into the Living Room.
 # X grows to the right and Y grows downwards in this drawing. All values are in meters.
 #
 #   +--------------+-------------------+--------------+
@@ -270,7 +270,43 @@ LAYOUT_8A = Layout(
     )
 )
 
-
+# Layout with 8 Rooms, variant B:
+# a. An H-shaped House: A Great Hall between two Wings, with a Chapel in the North Court.
+# b. The Living Room leads to the Library and the Music Room, and the Dining Room leads to the Kitchen and the Billiard Room.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +--------------+    +-------------------+    +--------------+
+#   |   Library    |    |      Chapel       |    |   Kitchen    |
+#   |              |    |                   |    |              |
+#   +--------------+----+-------------------+----+--------------+
+#   | Living Room  |            Hall             | Dining Room  |
+#   |              |                             |              |
+#   +--------------+-----------------------------+--------------+
+#   |  Music Room  |                             |   Billiard   |
+#   |              |                             |     Room     |
+#   +--------------+                             +--------------+
+LAYOUT_8B = Layout(
+    id = "8B",
+    rooms = (
+        Room(id = "library", name = "Library", x_min = -12, x_max = -6, y_min = -8, y_max = -3),
+        Room(id = "chapel", name = "Chapel", x_min = -4, x_max = 4, y_min = -8, y_max = -3),
+        Room(id = "kitchen", name = "Kitchen", x_min = 6, x_max = 12, y_min = -8, y_max = -3),
+        Room(id = "living_room", name = "Living Room", x_min = -12, x_max = -6, y_min = -3, y_max = 3),
+        Room(id = "hall", name = "Hall", x_min = -6, x_max = 6, y_min = -3, y_max = 3),
+        Room(id = "dining_room", name = "Dining Room", x_min = 6, x_max = 12, y_min = -3, y_max = 3),
+        Room(id = "music_room", name = "Music Room", x_min = -12, x_max = -6, y_min = 3, y_max = 8),
+        Room(id = "billiard_room", name = "Billiard Room", x_min = 6, x_max = 12, y_min = 3, y_max = 8),
+    ),
+    doors = (
+        ("hall", "chapel"),
+        ("hall", "living_room"),
+        ("hall", "dining_room"),
+        ("living_room", "library"),
+        ("living_room", "music_room"),
+        ("dining_room", "kitchen"),
+        ("dining_room", "billiard_room"),
+    )
+)
 
 
 # Every Layout, grouped by its Number of Rooms (CG-2).
@@ -278,5 +314,5 @@ LAYOUT_8A = Layout(
 LAYOUTS = {
     6: (LAYOUT_6A, LAYOUT_6B, LAYOUT_6C),
     7: (LAYOUT_7A, LAYOUT_7B, LAYOUT_7C),
-    8: (LAYOUT_8A,),
+    8: (LAYOUT_8A, LAYOUT_8B),
 }

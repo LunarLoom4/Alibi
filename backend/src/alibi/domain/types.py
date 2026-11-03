@@ -6,7 +6,7 @@ from dataclasses import dataclass
 TIME_SLOTS = ("20:00", "20:30", "21:00", "21:30", "22:00", "22:30")
 
 
-# Defining a Room of the House: its ID, its display Name, and its Rectangle on the Floor Plan in meters.
+# Defining a Room of the House: Its ID, its display Name, and its Rectangle on the Floor Plan in meters.
 @dataclass(frozen = True)
 class Room:
     id: str
