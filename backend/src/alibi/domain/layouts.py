@@ -308,11 +308,50 @@ LAYOUT_8B = Layout(
     )
 )
 
+# Layout with 8 Rooms, variant C:
+# a. A Courtyard House like an Indian Haveli, with seven Rooms around an open Courtyard and the Hall along the North side.
+# b. The Hall, the Bedroom, the Living Room and the Kitchen open onto the Courtyard, and the Study opens ONLY into the Hall.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +--------------+-----------------------------+
+#   |    Study     |            Hall             |
+#   |              |                             |
+#   +--------------+--------------+--------------+
+#   |   Bedroom    |  Courtyard   |   Kitchen    |
+#   |              |              |              |
+#   +--------------+--------------+--------------+
+#   |  Music Room  | Living Room  | Dining Room  |
+#   |              |              |              |
+#   +--------------+--------------+--------------+
+LAYOUT_8C = Layout(
+    id = "8C",
+    rooms = (
+        Room(id = "study", name = "Study", x_min = -9, x_max = -3, y_min = -9, y_max = -3),
+        Room(id = "hall", name = "Hall", x_min = -3, x_max = 9, y_min = -9, y_max = -3),
+        Room(id = "bedroom", name = "Bedroom", x_min = -9, x_max = -3, y_min = -3, y_max = 3),
+        Room(id = "courtyard", name = "Courtyard", x_min = -3, x_max = 3, y_min = -3, y_max = 3),
+        Room(id = "kitchen", name = "Kitchen", x_min = 3, x_max = 9, y_min = -3, y_max = 3),
+        Room(id = "music_room", name = "Music Room", x_min = -9, x_max = -3, y_min = 3, y_max = 9),
+        Room(id = "living_room", name = "Living Room", x_min = -3, x_max = 3, y_min = 3, y_max = 9),
+        Room(id = "dining_room", name = "Dining Room", x_min = 3, x_max = 9, y_min = 3, y_max = 9),
+    ),
+    doors = (
+        ("hall", "study"),
+        ("hall", "courtyard"),
+        ("courtyard", "bedroom"),
+        ("courtyard", "living_room"),
+        ("courtyard", "kitchen"),
+        ("kitchen", "dining_room"),
+        ("living_room", "dining_room"),
+        ("living_room", "music_room"),
+    )
+)
+
 
 # Every Layout, grouped by its Number of Rooms (CG-2).
 # A Case with S Suspects picks one of the Layouts listed under count_rooms(S).
 LAYOUTS = {
     6: (LAYOUT_6A, LAYOUT_6B, LAYOUT_6C),
     7: (LAYOUT_7A, LAYOUT_7B, LAYOUT_7C),
-    8: (LAYOUT_8A, LAYOUT_8B),
+    8: (LAYOUT_8A, LAYOUT_8B, LAYOUT_8C),
 }
