@@ -196,10 +196,47 @@ LAYOUT_7B = Layout(
     )
 )
 
+# Layout with 7 Rooms, variant C:
+# a. A U-shaped House around a Courtyard that is open to the sky and closed by a Garden Wall on the South side.
+# b. The Courtyard opens into the Hall and the Kitchen, and the Study opens ONLY into the Library.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +--------------+-------------------+--------------+
+#   | Living Room  |       Hall        | Dining Room  |
+#   |              |                   |              |
+#   +--------------+-------------------+--------------+
+#   |   Library    |     Courtyard     |   Kitchen    |
+#   |              |                   |              |
+#   +--------------+-------------------+--------------+
+#   |    Study     |
+#   |              |
+#   +--------------+
+LAYOUT_7C = Layout(
+    id = "7C",
+    rooms = (
+        Room(id = "living_room", name = "Living Room", x_min = -10, x_max = -4, y_min = -5, y_max = 0),
+        Room(id = "hall", name = "Hall", x_min = -4, x_max = 4, y_min = -5, y_max = 0),
+        Room(id = "dining_room", name = "Dining Room", x_min = 4, x_max = 10, y_min = -5, y_max = 0),
+        Room(id = "library", name = "Library", x_min = -10, x_max = -4, y_min = 0, y_max = 5),
+        Room(id = "courtyard", name = "Courtyard", x_min = -4, x_max = 4, y_min = 0, y_max = 5),
+        Room(id = "kitchen", name = "Kitchen", x_min = 4, x_max = 10, y_min = 0, y_max = 5),
+        Room(id = "study", name = "Study", x_min = -10, x_max = -4, y_min = 5, y_max = 10),
+    ),
+    doors = (
+        ("living_room", "hall"),
+        ("hall", "dining_room"),
+        ("dining_room", "kitchen"),
+        ("hall", "courtyard"),
+        ("courtyard", "kitchen"),
+        ("living_room", "library"),
+        ("library", "study"),
+    )
+)
+
 
 # Every Layout, grouped by its Number of Rooms (CG-2).
 # A Case with S Suspects picks one of the Layouts listed under count_rooms(S).
 LAYOUTS = {
     6: (LAYOUT_6A, LAYOUT_6B, LAYOUT_6C),
-    7: (LAYOUT_7A, LAYOUT_7B),
+    7: (LAYOUT_7A, LAYOUT_7B, LAYOUT_7C),
 }
