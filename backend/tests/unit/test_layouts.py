@@ -1,11 +1,11 @@
 import pytest
 from itertools import combinations
-from alibi.domain.layouts import Layout, LAYOUT_6A, LAYOUT_6B, LAYOUT_7A
+from alibi.domain.layouts import Layout, LAYOUT_6A, LAYOUT_6B, LAYOUT_6C, LAYOUT_7A
 from alibi.domain.types import Room
 
 
 # Every Layout written so far. The tests below run once for each of them.
-ALL_LAYOUTS = [LAYOUT_6A, LAYOUT_6B, LAYOUT_7A]
+ALL_LAYOUTS = [LAYOUT_6A, LAYOUT_6B, LAYOUT_6C, LAYOUT_7A]
 
 # Name each test run after its Layout ID, so a failure reads 'test_...[7A]' instead of the default 'test_...[layout0]'.
 LAYOUT_IDS = [layout.id for layout in ALL_LAYOUTS]

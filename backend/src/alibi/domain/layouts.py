@@ -91,6 +91,40 @@ LAYOUT_6B = Layout(
     )
 )
 
+# Layout with 6 Rooms, variant C:
+# a. Three rows that step back, with three Rooms at the Front, two in the Middle, and the Kitchen at the Back.
+# b. The Bedroom opens ONLY into the Hall, and the Kitchen opens ONLY into the Dining Room.
+# X grows to the right and Y grows downwards in this drawing. All values are in meters.
+#
+#   +-----------------+-------------------+------------+
+#   |   Living Room   |       Hall        |   Study    |
+#   |                 |                   |            |
+#   +-----------------+-------------------+------------+
+#   |   Dining Room   |      Bedroom      |
+#   |                 |                   |
+#   +-----------------+-------------------+
+#   |     Kitchen     |
+#   |                 |
+#   +-----------------+
+LAYOUT_6C = Layout(
+    id = "6C",
+    rooms = (
+        Room(id = "living_room", name = "Living Room", x_min = -10, x_max = -3, y_min = -5, y_max = 0),
+        Room(id = "hall", name = "Hall", x_min = -3, x_max = 5, y_min = -5, y_max = 0),
+        Room(id = "study", name = "Study", x_min = 5, x_max = 10, y_min = -5, y_max = 0),
+        Room(id = "dining_room", name = "Dining Room", x_min = -10, x_max = -3, y_min = 0, y_max = 5),
+        Room(id = "bedroom", name = "Bedroom", x_min = -3, x_max = 5, y_min = 0, y_max = 5),
+        Room(id = "kitchen", name = "Kitchen", x_min = -10, x_max = -3, y_min = 5, y_max = 10),
+    ),
+    doors = (
+        ("living_room", "hall"),
+        ("hall", "study"),
+        ("hall", "bedroom"),
+        ("living_room", "dining_room"),
+        ("dining_room", "kitchen"),
+    )
+)
+
 
 # Layout with 7 Rooms, variant A: Two rows of Rooms with a Garden Terrace on the East side.
 # X grows to the right and Y grows downwards in this drawing. All values are in meters.
