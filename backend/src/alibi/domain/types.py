@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from types import MappingProxyType
+from collections.abc import Mapping
 
 
 # The 6 Time Slots of the Night, every 30 minutes from 20:00 to 22:30.
@@ -38,3 +40,40 @@ class Suspect:
         if self.is_murderer and self.is_red_herring:
             raise ValueError(f"Suspect '{self.id}' cannot be a Murderer AND a Red Herring.")
 
+
+# Defining the Timeline Grid of a Case: The Room of every Person, the Suspects and the Victim, at every Time Slot.
+# Each Person has exactly one Room ID for each Time Slot, so nobody is in two Rooms at once (CG-3).
+# The Grid is the Ground Truth, so it keeps a read-only copy of its Rows and can never change after it is made.
+@dataclass(frozen = True)
+class TimelineGrid:
+    locations: Mapping[str, tuple[str, ...]]
+
+    # Check the Rows, then keep a read-only copy of them.
+    def __post_init__(self):
+        # 1. Every Case has a Victim, so the Grid always has a Row for them.
+        if VICTIM_ID not in self.locations:
+            raise ValueError("The Timeline Grid has no Row for the Victim.")
+
+        # 2. Every Row is a tuple, which cannot change, with one Room ID for each Time Slot.
+        for person_id, rooms in self.locations.items():
+            if not isinstance(rooms, tuple):
+                raise TypeError(f"The Row of '{person_id}' must be a tuple of Room IDs.")
+
+            if len(rooms) != len(TIME_SLOTS):
+                raise ValueError(f"'{person_id}' needs exactly {len(TIME_SLOTS)} Room IDs, one for each Time Slot, but has {len(rooms)}.")
+
+        # 3. Keep a read-only copy, so a later change to the caller's dictionary never reaches the Grid.
+        # A frozen dataclass blocks a normal assignment, even inside '__post_init__', so 'object.__setattr__' sets the field.
+        object.__setattr__(self, "locations", MappingProxyType(dict(self.locations)))
+
+    # Returns the ID of the Room where the given Person is at the given Time Slot.
+    def room_of(self, person_id: str, time_slot: int) -> str:
+        # A Person outside the Grid has no Row to read.
+        if person_id not in self.locations:
+            raise ValueError(f"'{person_id}' is not in the Timeline Grid.")
+
+        # A negative index would silently read from the end of the Row, so ONLY 0 to 5 are allowed.
+        if time_slot < 0 or time_slot >= len(TIME_SLOTS):
+            raise ValueError(f"Time Slot {time_slot} does not exist. Time Slots go from 0 to {len(TIME_SLOTS) - 1}.")
+
+        return self.locations[person_id][time_slot]
