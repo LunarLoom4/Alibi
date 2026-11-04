@@ -15,3 +15,26 @@ class Room:
     x_max: float
     y_min: float
     y_max: float
+
+
+# The ID of the Victim in the Timeline Grid. No 'Suspect' can have this ID.
+VICTIM_ID = "victim"
+
+# Defining a Suspect of the Case: Their ID and the Role that the Case Generator gives them.
+# The LLM writes the Name later (CG-8), so the Rules need ONLY the ID and the Role.
+@dataclass(frozen = True)
+class Suspect:
+    id: str
+    is_murderer: bool
+    is_red_herring: bool
+
+    # Reject a Suspect that the Rules do not allow.
+    def __post_init__(self):
+        # 1. The Victim's ID keeps the Victim apart from every Suspect in the Timeline Grid.
+        if self.id == VICTIM_ID:
+            raise ValueError(f"A Suspect cannot have the ID '{VICTIM_ID}', which belongs to the Victim.")
+
+        # 2. A Red Herring is an Innocent Suspect who ONLY looks guilty, so they are never a Murderer.
+        if self.is_murderer and self.is_red_herring:
+            raise ValueError(f"Suspect '{self.id}' cannot be a Murderer AND a Red Herring.")
+
