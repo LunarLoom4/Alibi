@@ -24,13 +24,13 @@ def shared_wall_length(room_a: Room, room_b: Room) -> float:
     # Rooms side by side: They touch on a vertical Wall and overlap along Y.
     if room_a.x_max == room_b.x_min or room_b.x_max == room_a.x_min:
 
-        # Minimum of maximum y's minus the maximum of minimum y's. A negative value is a gap, so it counts as 0.
+        # Minimum of maximum 'y' values minus the maximum of minimum 'y' values. A negative value is a gap, so it counts as 0.
         return max(0, min(room_a.y_max, room_b.y_max) - max(room_a.y_min, room_b.y_min))
 
     # Rooms one above the other: They touch on a horizontal Wall and overlap along X.
     if room_a.y_max == room_b.y_min or room_b.y_max == room_a.y_min:
 
-        # Minimum of maximum x's minus the maximum of minimum x's. A negative value is a gap, so it counts as 0.
+        # Minimum of maximum 'x' values minus the maximum of minimum 'x' values. A negative value is a gap, so it counts as 0.
         return max(0, min(room_a.x_max, room_b.x_max) - max(room_a.x_min, room_b.x_min))
 
     return 0
