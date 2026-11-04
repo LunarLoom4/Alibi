@@ -49,6 +49,7 @@ class TimelineGrid:
     locations: Mapping[str, tuple[str, ...]]
 
     # Check the Rows, then keep a read-only copy of them.
+    # '__post_init__' is run just after '__init__' by Python automatically.
     def __post_init__(self):
         # 1. Every Case has a Victim, so the Grid always has a Row for them.
         if VICTIM_ID not in self.locations:
@@ -63,7 +64,7 @@ class TimelineGrid:
                 raise ValueError(f"'{person_id}' needs exactly {len(TIME_SLOTS)} Room IDs, one for each Time Slot, but has {len(rooms)} instead.")
 
         # 3. Keep a read-only copy, so a later change to the caller's dictionary never reaches the Grid.
-        # A frozen dataclass blocks a normal assignment, even inside '__post_init__', so 'object.__setattr__' sets the field.
+        # A frozen dataclass blocks a normal assignment even inside '__post_init__', so 'object.__setattr__' is used to set the field (A valid Bypass).
         object.__setattr__(self, "locations", MappingProxyType(dict(self.locations)))
 
     # Returns the ID of the Room where the given Person is at the given Time Slot.

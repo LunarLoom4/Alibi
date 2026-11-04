@@ -66,7 +66,6 @@ def random_grid(layout: Layout, num_suspects: int, seed: int) -> TimelineGrid:
     # Pick a random Room for each Person at each Time Slot. The same Seed always gives the same Grid.
     for person_id in person_ids:
         rooms = []
-
         for _ in TIME_SLOTS:
             rooms.append(rng.choice(room_ids))
 
@@ -119,6 +118,7 @@ def test_grid_cannot_change_after_it_is_made():
         grid.locations = {}
 
 # Defining a Test Function to check that 'room_of' reads the Room of every Person at every Time Slot.
+# Basically, a check for the correct implementation of 'room_of()' function.
 @pytest.mark.parametrize("num_suspects", SUSPECT_COUNTS)
 def test_room_of_reads_every_time_slot(num_suspects: int):
     for layout in LAYOUTS[count_rooms(num_suspects)]:
@@ -145,6 +145,7 @@ def test_room_of_rejects_a_nonexistent_time_slot(time_slot: int):
         grid.room_of(VICTIM_ID, time_slot)
 
 # Defining a Test Function to check that a Room Roster lists every Person in its Room AND nobody from other Rooms (KN-3).
+# Basically, a check for the correct implementation of 'roster()' function.
 @pytest.mark.parametrize("num_suspects", SUSPECT_COUNTS)
 def test_kn3_roster_lists_only_the_persons_in_the_room(num_suspects: int):
     for layout in LAYOUTS[count_rooms(num_suspects)]:
@@ -161,6 +162,8 @@ def test_kn3_roster_lists_only_the_persons_in_the_room(num_suspects: int):
                 # Each Person shows up in ONLY one Roster, and that Roster is the one of their own Room.
                 assert sorted(placed_ids) == sorted(grid.locations)
 
+                # Check that the same Person shows up in the Roster of their Room at this Time Slot.
+                # Basically, a check for the correct coupling of 'room_of()' function and 'roster()' function.
                 for person_id in grid.locations:
                     assert person_id in grid.roster(grid.room_of(person_id, time_slot), time_slot)
 
