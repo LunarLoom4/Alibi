@@ -54,7 +54,6 @@ SUSPECT_COUNTS = range(MIN_SUSPECTS, MAX_SUSPECTS + 1)
 # Number of random Grids that each Grid test builds for every Layout.
 GRIDS_PER_LAYOUT = 20
 
-
 # Helper function to build a Timeline Grid that puts the Victim and every Suspect in a random Room at every Time Slot.
 # The Grid ignores the Doors (CG-15) and lets the Victim move after the Crime (CG-3).
 # These tests check ONLY how the Grid stores and reads its Rooms.
@@ -144,3 +143,31 @@ def test_room_of_rejects_a_nonexistent_time_slot(time_slot: int):
 
     with pytest.raises(ValueError):
         grid.room_of(VICTIM_ID, time_slot)
+
+# Defining a Test Function to check that a Room Roster lists every Person in its Room AND nobody from other Rooms (KN-3).
+@pytest.mark.parametrize("num_suspects", SUSPECT_COUNTS)
+def test_kn3_roster_lists_only_the_persons_in_the_room(num_suspects: int):
+    for layout in LAYOUTS[count_rooms(num_suspects)]:
+        for seed in range(GRIDS_PER_LAYOUT):
+            grid = random_grid(layout, num_suspects, seed)
+
+            for time_slot in range(len(TIME_SLOTS)):
+                placed_ids = []
+
+                # Gather the Rosters of every Room of the House at this Time Slot.
+                for room in layout.rooms:
+                    placed_ids.extend(grid.roster(room.id, time_slot))
+
+                # Each Person shows up in ONLY one Roster, and that Roster is the one of their own Room.
+                assert sorted(placed_ids) == sorted(grid.locations)
+
+                for person_id in grid.locations:
+                    assert person_id in grid.roster(grid.room_of(person_id, time_slot), time_slot)
+
+# Defining a Test Function to check that 'roster' rejects a Time Slot outside 0 to 5, like 'room_of' does.
+@pytest.mark.parametrize("time_slot", [-1, len(TIME_SLOTS)])
+def test_roster_rejects_a_nonexistent_time_slot(time_slot: int):
+    grid = TimelineGrid(locations = {VICTIM_ID: ("hall",) * len(TIME_SLOTS)})
+
+    with pytest.raises(ValueError):
+        grid.roster("hall", time_slot)

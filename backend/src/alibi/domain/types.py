@@ -60,7 +60,7 @@ class TimelineGrid:
                 raise TypeError(f"The Row of '{person_id}' must be a tuple of Room IDs.")
 
             if len(rooms) != len(TIME_SLOTS):
-                raise ValueError(f"'{person_id}' needs exactly {len(TIME_SLOTS)} Room IDs, one for each Time Slot, but has {len(rooms)}.")
+                raise ValueError(f"'{person_id}' needs exactly {len(TIME_SLOTS)} Room IDs, one for each Time Slot, but has {len(rooms)} instead.")
 
         # 3. Keep a read-only copy, so a later change to the caller's dictionary never reaches the Grid.
         # A frozen dataclass blocks a normal assignment, even inside '__post_init__', so 'object.__setattr__' sets the field.
@@ -77,3 +77,13 @@ class TimelineGrid:
             raise ValueError(f"Time Slot {time_slot} does not exist. Time Slots go from 0 to {len(TIME_SLOTS) - 1}.")
 
         return self.locations[person_id][time_slot]
+
+    # Returns the IDs of every Person in the given Room at the given Time Slot: The Room Roster (KN-3).
+    def roster(self, room_id: str, time_slot: int) -> set[str]:
+        result = set()
+
+        for person_id in self.locations:
+            if self.room_of(person_id, time_slot) == room_id:
+                result.add(person_id)
+
+        return result
