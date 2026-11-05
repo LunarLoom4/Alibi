@@ -2,7 +2,7 @@ import random
 
 from .layouts import Layout, LAYOUTS
 from .parameters import count_rooms, max_red_herrings
-from .types import Crime, Suspect, TIME_SLOTS
+from .types import Crime, Suspect, TIME_SLOTS, VICTIM_ID
 
 
 # Picks the House of a Case: One of the Layouts with the Number of Rooms that CG-2 gives for this Number of Suspects.
@@ -60,3 +60,40 @@ def pick_crime(layout: Layout, rng: random.Random) -> Crime:
     first_slot = rng.choice(window_starts)
 
     return Crime(slot = crime_slot, room_id = room_id, window = (first_slot, first_slot + 1, first_slot + 2))
+
+
+# Places every Person at the Crime Slot, and returns the Room ID of each Person ID.
+# The Crime Room holds ONLY the Victim and the Murderers (CG-4), so no Innocent Suspect is in a Room with a Murderer (CG-5).
+# The Innocent Suspects stand in groups of 2 or more in the other Rooms, so each of them has an alibi (CG-6).
+def place_at_crime_slot(layout: Layout, suspects: tuple[Suspect, ...], crime: Crime, rng: random.Random) -> dict[str, str]:
+    # 1. A Crime Room outside the House would leave the Victim nowhere, so it is rejected.
+    room_ids = [room.id for room in layout.rooms]
+
+    if crime.room_id not in room_ids:
+        raise ValueError(f"The Crime Room '{crime.room_id}' is not a Room of Layout '{layout.id}'.")
+
+    # 2. The Victim and every Murderer are in the Crime Room (CG-4).
+    places = {VICTIM_ID: crime.room_id}
+
+    for suspect in suspects:
+        if suspect.is_murderer:
+            places[suspect.id] = crime.room_id
+
+    # 3. Pick how many groups the Innocent Suspects form, and a different Room outside the Crime Room for each group.
+    other_room_ids = [room_id for room_id in room_ids if room_id != crime.room_id]
+    innocent_ids = [suspect.id for suspect in suspects if not suspect.is_murderer]
+    num_groups = rng.randint(1, min(len(innocent_ids) // 2, len(other_room_ids)))
+    group_room_ids = rng.sample(other_room_ids, num_groups)
+
+    # 4. Every group gets 2 Innocent Suspects first, so no Innocent Suspect is ever alone (CG-6).
+    rng.shuffle(innocent_ids)
+
+    for index, room_id in enumerate(group_room_ids):
+        places[innocent_ids[2 * index]] = room_id
+        places[innocent_ids[2 * index + 1]] = room_id
+
+    # 5. Each Innocent Suspect who is left joins one of the groups at random.
+    for innocent_id in innocent_ids[2 * num_groups:]:
+        places[innocent_id] = rng.choice(group_room_ids)
+
+    return places
