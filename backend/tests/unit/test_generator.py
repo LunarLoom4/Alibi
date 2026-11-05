@@ -1,3 +1,4 @@
+import math
 import random
 import pytest
 
@@ -9,8 +10,36 @@ from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max
 # Every allowed Number of Suspects. The tests below run once for each of them.
 SUSPECT_COUNTS = range(MIN_SUSPECTS, MAX_SUSPECTS + 1)
 
-# The Seeds that each test tries. A fixed set, so a failure can always be run again.
+# The Seeds for the tests that check a Rule on every Seed. Each Seed is a full check of its own.
+# This number ONLY trades run time for confidence. More Suspects and More Layouts mostly add test cases through 'parametrize', not Seeds.
 SEEDS = range(200)
+
+# Highest chance that a coverage test is allowed to miss an outcome that the code can really produce.
+MISS_CHANCE = 1e-9
+
+
+# Helper function to count the Seeds that a coverage test needs, so that missing any outcome has a chance below MISS_CHANCE.
+# An outcome with the chance 'p' is missed by N Seeds with the chance (1 - p) ** N, which is at most e ** (-p * N).
+# For all the outcomes together, that stays below MISS_CHANCE when N >= ln(num_outcomes / MISS_CHANCE) / p.
+# Thus, N grows by itself with more Layouts, Rooms or Suspects, and stays small when there are few outcomes.
+def seeds_for_coverage(num_outcomes: int, smallest_chance: float) -> range:
+    return range(math.ceil(math.log(num_outcomes / MISS_CHANCE) / smallest_chance))
+
+# Defining a Test Function to check that 'seeds_for_coverage' keeps the chance of a miss below MISS_CHANCE.
+# It also checks that more outcomes and rarer outcomes get more Seeds.
+@pytest.mark.parametrize("num_outcomes", [1, 2, 3, 5, 8, 10, 26])
+def test_seeds_for_coverage_scales_with_the_outcomes(num_outcomes: int):
+    for smallest_chance in [0.5, 1 / num_outcomes, 0.1, 0.01]:
+        num_seeds = len(seeds_for_coverage(num_outcomes, smallest_chance))
+
+        # Asserts that the chance of missing any outcome is below MISS_CHANCE
+        assert num_outcomes * (1 - smallest_chance) ** num_seeds <= MISS_CHANCE
+
+        # Asserts that more outcomes get more Seeds
+        assert len(seeds_for_coverage(num_outcomes + 1, smallest_chance)) >= num_seeds
+
+        # Asserts that rarer outcomes (who have smaller chances) get more Seeds than frequent outcomes
+        assert len(seeds_for_coverage(num_outcomes, smallest_chance / 2)) > num_seeds
 
 
 # Defining a Test Function to check that the picked House has the Number of Rooms that CG-2 gives, and comes from LAYOUTS.
@@ -28,12 +57,14 @@ def test_cg2_layout_has_the_rooms_for_the_suspects(num_suspects: int):
 # Defining a Test Function to check that every Layout with the Number of Rooms for this Number of Suspects gets picked over the Seeds (CG-2).
 @pytest.mark.parametrize("num_suspects", SUSPECT_COUNTS)
 def test_cg2_every_layout_can_be_picked(num_suspects: int):
+    layout_ids = {layout.id for layout in LAYOUTS[count_rooms(num_suspects)]}
     picked_ids = set()
 
-    for seed in SEEDS:
+    # Each Layout has the chance 1 / L, where L is the Number of Layouts for this Number of Rooms.
+    for seed in seeds_for_coverage(len(layout_ids), 1 / len(layout_ids)):
         picked_ids.add(pick_layout(num_suspects, random.Random(seed)).id)
 
-    assert picked_ids == {layout.id for layout in LAYOUTS[count_rooms(num_suspects)]}
+    assert picked_ids == layout_ids
 
 # Defining a Test Function to check that the same Seed always picks the same House (CG-1).
 @pytest.mark.parametrize("num_suspects", SUSPECT_COUNTS)
@@ -80,11 +111,21 @@ def test_rh1_red_herrings_are_innocent(num_suspects: int, num_murderers: int):
 @pytest.mark.parametrize("num_suspects, num_murderers", ROLE_COUNTS)
 def test_roles_cover_every_choice(num_suspects: int, num_murderers: int):
     all_ids = {f"suspect_{number}" for number in range(1, num_suspects + 1)}
+    maximum_red_herrings = max_red_herrings(num_suspects, num_murderers)
+
     murderer_ids = set()
     red_herring_ids = set()
     red_herring_counts = set()
 
-    for seed in SEEDS:
+    # The rarest outcomes:
+    # a. A given Suspect is a Murderer with the chance M / S.
+    # b. A given Suspect is a Red Herring with the chance (average Number of Red Herrings) / S.
+    # c. Each Number of Red Herrings shows up with the chance 1 / (largest Number).
+    murderer_seeds = seeds_for_coverage(num_suspects, num_murderers / num_suspects)
+    red_herring_seeds = seeds_for_coverage(num_suspects, (1 + maximum_red_herrings) / 2 / num_suspects)
+    count_seeds = seeds_for_coverage(maximum_red_herrings, 1 / maximum_red_herrings)
+
+    for seed in range(max(len(murderer_seeds), len(red_herring_seeds), len(count_seeds))):
         suspects = pick_roles(num_suspects, num_murderers, random.Random(seed))
 
         murderer_ids.update(suspect.id for suspect in suspects if suspect.is_murderer)
@@ -93,7 +134,7 @@ def test_roles_cover_every_choice(num_suspects: int, num_murderers: int):
 
     assert murderer_ids == all_ids
     assert red_herring_ids == all_ids
-    assert red_herring_counts == set(range(1, max_red_herrings(num_suspects, num_murderers) + 1))
+    assert red_herring_counts == set(range(1, maximum_red_herrings + 1))
 
 # Defining a Test Function to check that the same Seed always gives the same Roles (CG-1).
 @pytest.mark.parametrize("num_suspects, num_murderers", ROLE_COUNTS)
