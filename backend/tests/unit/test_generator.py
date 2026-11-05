@@ -185,17 +185,21 @@ def test_cg13_crime_room_is_in_the_house(layout: Layout):
 # Defining a Test Function to check that, over the Seeds, every Room can be the Crime Room and every Window of every Crime Slot shows up.
 @pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
 def test_cg13_crime_covers_every_choice(layout: Layout):
-    room_ids = {room.id for room in layout.rooms}
+    all_room_ids = {room.id for room in layout.rooms}
     all_windows = set()
-    picked_room_ids = set()
-    picked_windows = set()
-
     for crime_slot, windows in ALLOWED_WINDOWS.items():
         for window in windows:
             all_windows.add((crime_slot, window))
 
-    # Each Room has the chance 1 / R. The rarest (Crime Slot, Window) pair has the chance 1 / 5 * 1 / 3.
-    room_seeds = seeds_for_coverage(len(room_ids), 1 / len(room_ids))
+    picked_room_ids = set()
+    picked_windows = set()
+
+    # Each Room has the chance 1 / R.
+    # The rarest (Crime Slot, Window) pair has the chance 1 / num_crime_slots * 1 / max_num_of_windows_in_a_crime_slot.
+    # => 1 / NCS * 1 / 3
+    # => 1 / 5 * 1 / 3
+    # => 1 / 15
+    room_seeds = seeds_for_coverage(len(all_room_ids), 1 / len(all_room_ids))
     window_seeds = seeds_for_coverage(len(all_windows), 1 / (len(TIME_SLOTS) - 1) / 3)
 
     for seed in range(max(len(room_seeds), len(window_seeds))):
@@ -204,7 +208,7 @@ def test_cg13_crime_covers_every_choice(layout: Layout):
         picked_room_ids.add(crime.room_id)
         picked_windows.add((crime.slot, crime.window))
 
-    assert picked_room_ids == room_ids
+    assert picked_room_ids == all_room_ids
     assert picked_windows == all_windows
 
 # Defining a Test Function to check that the same Seed always picks the same Crime (CG-1).
