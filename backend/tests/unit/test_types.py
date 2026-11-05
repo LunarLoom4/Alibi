@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms
-from alibi.domain.types import Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID
+from alibi.domain.types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID
 
 
 # Every Role that a Suspect can be given, whether the Rules allow it or not.
@@ -174,3 +174,44 @@ def test_roster_rejects_a_nonexistent_time_slot(time_slot: int):
 
     with pytest.raises(ValueError):
         grid.roster("hall", time_slot)
+
+
+# Every allowed Time-of-death Window for each Crime Slot: 3 consecutive Time Slots that hold the Crime Slot.
+# Slot 0 has none, because an Innocent Suspect must see the Victim alive before the Crime (CG-16).
+ALLOWED_WINDOWS = {
+    1: [(0, 1, 2), (1, 2, 3)],
+    2: [(0, 1, 2), (1, 2, 3), (2, 3, 4)],
+    3: [(1, 2, 3), (2, 3, 4), (3, 4, 5)],
+    4: [(2, 3, 4), (3, 4, 5)],
+    5: [(3, 4, 5)],
+}
+
+# Defining a Test Function to check every pair of a Crime Slot and a Window of 3 consecutive Time Slots (CG-13, CG-16).
+@pytest.mark.parametrize("crime_slot", range(-1, len(TIME_SLOTS) + 1))
+@pytest.mark.parametrize("first_slot", range(-1, len(TIME_SLOTS)))
+def test_cg13_cg16_crime_slot_lies_in_its_window(first_slot: int, crime_slot: int):
+    window = (first_slot, first_slot + 1, first_slot + 2)
+
+    if window in ALLOWED_WINDOWS.get(crime_slot, []):
+        crime = Crime(slot = crime_slot, room_id = "hall", window = window)
+
+        assert crime.window == window
+
+        # A frozen Crime never changes during the Game.
+        with pytest.raises(FrozenInstanceError):
+            crime.slot = 0
+
+    else:
+        with pytest.raises(ValueError):
+            Crime(slot = crime_slot, room_id = "hall", window = window)
+
+# Defining a Test Function to check that a Window which is not 3 consecutive Time Slots is rejected.
+@pytest.mark.parametrize("window", [(), (1, 2), (1, 2, 3, 4), (1, 2, 4), (2, 2, 3), (3, 2, 1)])
+def test_cg13_window_is_three_consecutive_slots(window: tuple):
+    with pytest.raises(ValueError):
+        Crime(slot = 2, room_id = "hall", window = window)
+
+# Defining a Test Function to check that the Window must be a tuple, like the Rows of the Timeline Grid.
+def test_crime_rejects_a_window_that_is_not_a_tuple():
+    with pytest.raises(TypeError):
+        Crime(slot = 2, room_id = "hall", window = [1, 2, 3])
