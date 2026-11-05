@@ -18,6 +18,7 @@ SEEDS = range(200)
 def test_cg2_layout_has_the_rooms_for_the_suspects(num_suspects: int):
     num_rooms = count_rooms(num_suspects)
 
+    # Any value of 'seed' should choose a Layout only from the pre-constructed set of Layouts.
     for seed in SEEDS:
         layout = pick_layout(num_suspects, random.Random(seed))
 
