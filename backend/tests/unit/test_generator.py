@@ -2,9 +2,10 @@ import math
 import random
 import pytest
 
-from alibi.domain.generator import pick_layout, pick_roles
-from alibi.domain.layouts import LAYOUTS
+from alibi.domain.generator import pick_layout, pick_roles, pick_crime
+from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
+from alibi.domain.types import TIME_SLOTS
 
 
 # Every allowed Number of Suspects. The tests below run once for each of them.
@@ -157,3 +158,57 @@ def test_pick_roles_rejects_a_disallowed_number_of_murderers(num_suspects: int):
 def test_pick_roles_rejects_a_disallowed_number_of_suspects(num_suspects: int):
     with pytest.raises(ValueError):
         pick_roles(num_suspects, 1, random.Random(0))
+
+
+# Every Layout in the LAYOUTS dictionary, and their IDs. The Crime tests below run once for each of them.
+ALL_LAYOUTS = [layout for layouts in LAYOUTS.values() for layout in layouts]
+ALL_LAYOUT_IDS = [layout.id for layout in ALL_LAYOUTS]
+
+# Every allowed Time-of-death Window for each Crime Slot, written by hand as in 'test_types.py' (CG-13, CG-16).
+ALLOWED_WINDOWS = {
+    1: [(0, 1, 2), (1, 2, 3)],
+    2: [(0, 1, 2), (1, 2, 3), (2, 3, 4)],
+    3: [(1, 2, 3), (2, 3, 4), (3, 4, 5)],
+    4: [(2, 3, 4), (3, 4, 5)],
+    5: [(3, 4, 5)],
+}
+
+# Defining a Test Function to check that the Crime Room is a Room of the House (CG-13).
+# The Crime itself already rejects a Crime Slot or a Window that the Rules do not allow.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
+def test_cg13_crime_room_is_in_the_house(layout: Layout):
+    room_ids = {room.id for room in layout.rooms}
+
+    for seed in SEEDS:
+        assert pick_crime(layout, random.Random(seed)).room_id in room_ids
+
+# Defining a Test Function to check that, over the Seeds, every Room can be the Crime Room and every Window of every Crime Slot shows up.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
+def test_cg13_crime_covers_every_choice(layout: Layout):
+    room_ids = {room.id for room in layout.rooms}
+    all_windows = set()
+    picked_room_ids = set()
+    picked_windows = set()
+
+    for crime_slot, windows in ALLOWED_WINDOWS.items():
+        for window in windows:
+            all_windows.add((crime_slot, window))
+
+    # Each Room has the chance 1 / R. The rarest (Crime Slot, Window) pair has the chance 1 / 5 * 1 / 3.
+    room_seeds = seeds_for_coverage(len(room_ids), 1 / len(room_ids))
+    window_seeds = seeds_for_coverage(len(all_windows), 1 / (len(TIME_SLOTS) - 1) / 3)
+
+    for seed in range(max(len(room_seeds), len(window_seeds))):
+        crime = pick_crime(layout, random.Random(seed))
+
+        picked_room_ids.add(crime.room_id)
+        picked_windows.add((crime.slot, crime.window))
+
+    assert picked_room_ids == room_ids
+    assert picked_windows == all_windows
+
+# Defining a Test Function to check that the same Seed always picks the same Crime (CG-1).
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
+def test_cg1_same_seed_picks_the_same_crime(layout: Layout):
+    for seed in SEEDS:
+        assert pick_crime(layout, random.Random(seed)) == pick_crime(layout, random.Random(seed))
