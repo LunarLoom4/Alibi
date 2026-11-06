@@ -73,7 +73,7 @@ class TimelineGrid:
         if person_id not in self.locations:
             raise ValueError(f"'{person_id}' is not in the Timeline Grid.")
 
-        # A negative index would silently read from the end of the Row, so ONLY 0 to 5 are allowed.
+        # A negative index would silently read from the end of the Row, so ONLY Time Slots from 0 to the last one are allowed.
         if time_slot < 0 or time_slot >= len(TIME_SLOTS):
             raise ValueError(f"Time Slot {time_slot} does not exist. Time Slots go from 0 to {len(TIME_SLOTS) - 1}.")
 
@@ -90,12 +90,15 @@ class TimelineGrid:
         return result
 
 
+# Number of Time Slots in the Time-of-death Window that the Detectives get (CG-13).
+WINDOW_LENGTH = 3
+
 # Defining the Crime of a Case: The Crime Slot, the Crime Room, and the Time-of-death Window that the Detectives get (CG-13).
 @dataclass(frozen = True)
 class Crime:
     slot: int
     room_id: str
-    window: tuple[int, int, int]
+    window: tuple[int, ...]
 
     # Reject a Crime that the Rules do not allow.
     def __post_init__(self):
@@ -103,22 +106,22 @@ class Crime:
         if self.slot < 1 or self.slot >= len(TIME_SLOTS):
             raise ValueError(f"The Crime Slot must be from 1 to {len(TIME_SLOTS) - 1}, not {self.slot}.")
 
-        # 2. The Window is a tuple of exactly 3 Time Slots (CG-13).
+        # 2. The Window is a tuple of exactly WINDOW_LENGTH Time Slots (CG-13).
         if not isinstance(self.window, tuple):
             raise TypeError("The Time-of-death Window must be a tuple of Time Slots.")
 
-        if len(self.window) != 3:
-            raise ValueError(f"The Time-of-death Window needs exactly 3 Time Slots, not {len(self.window)}.")
+        if len(self.window) != WINDOW_LENGTH:
+            raise ValueError(f"The Time-of-death Window needs exactly {WINDOW_LENGTH} Time Slots, not {len(self.window)}.")
 
-        # 3. The 3 Time Slots follow each other, and all of them exist.
+        # 3. The Time Slots of the Window follow each other, and all of them exist.
         first_slot = self.window[0]
 
-        if self.window != (first_slot, first_slot + 1, first_slot + 2):
-            raise ValueError(f"The Time-of-death Window must be 3 consecutive Time Slots, not {self.window}.")
+        if self.window != tuple(range(first_slot, first_slot + WINDOW_LENGTH)):
+            raise ValueError(f"The Time-of-death Window must be {WINDOW_LENGTH} consecutive Time Slots, not {self.window}.")
 
-        if first_slot < 0 or first_slot + 2 >= len(TIME_SLOTS):
+        if first_slot < 0 or first_slot + WINDOW_LENGTH > len(TIME_SLOTS):
             raise ValueError(f"The Time-of-death Window must lie inside Time Slots 0 to {len(TIME_SLOTS) - 1}, not {self.window}.")
 
-        # 4. The Crime Slot is one of the 3 Time Slots of the Window (CG-13).
+        # 4. The Crime Slot is one of the Time Slots of the Window (CG-13).
         if self.slot not in self.window:
             raise ValueError(f"The Crime Slot {self.slot} is not in the Time-of-death Window {self.window}.")
