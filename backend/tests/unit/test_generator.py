@@ -307,6 +307,7 @@ def test_placement_covers_every_choice(layout: Layout, num_suspects: int, num_mu
     assert group_room_ids == room_ids
     assert group_counts == set(range(1, largest_groups + 1))
 
+
 # Every allowed (Layout, Number of Suspects, Number of Murderers) where the Innocent Suspects can form 2 or more groups.
 GROUPING_CASES = [
     pytest.param(layout, num_suspects, num_murderers, id = f"{layout.id}-S{num_suspects}-M{num_murderers}")
@@ -321,15 +322,19 @@ GROUPING_CASES = [
 def test_placement_mixes_the_groups(layout: Layout, num_suspects: int, num_murderers: int):
     num_innocents = num_suspects - num_murderers
     largest_groups = num_innocents // 2
-    all_pairs = set(itertools.combinations([f"suspect_{number}" for number in range(1, num_suspects + 1)], 2))
+
+    all_possible_pairs_of_suspects = set(itertools.combinations([f"suspect_{number}" for number in range(1, num_suspects + 1)], 2))
+
     split_pairs = set()
     saw_two_big_groups = False
 
-    # Two given Suspects are both Innocent with the chance I (I - 1) / (S (S - 1)).
-    # They then stand in different groups with a chance of at least 1 / (2 * largest Number of groups).
-    # With 6 or more Innocent Suspects, two groups of 3 or more show up with a chance of at least 1 / (2 * largest Number of groups).
+    # Two given Suspects are both Innocent together with the chance of: I (I - 1) / (S (S - 1)).
     both_innocent_chance = num_innocents * (num_innocents - 1) / (num_suspects * (num_suspects - 1))
-    pair_seeds = seeds_for_coverage(len(all_pairs), both_innocent_chance / (2 * largest_groups))
+
+    # They then stand in 2 different groups with a chance of at least 1 / (2 * largest Number of groups).
+    pair_seeds = seeds_for_coverage(len(all_possible_pairs_of_suspects), both_innocent_chance / (2 * largest_groups))
+
+    # With 6 or more Innocent Suspects, two groups of 3 or more show up with a chance of at least 1 / (2 * largest Number of groups).
     big_group_seeds = seeds_for_coverage(1, 1 / (2 * largest_groups))
 
     for seed in range(max(len(pair_seeds), len(big_group_seeds))):
@@ -347,7 +352,7 @@ def test_placement_mixes_the_groups(layout: Layout, num_suspects: int, num_murde
         if len([size for size in group_sizes.values() if size >= 3]) >= 2:
             saw_two_big_groups = True
 
-    assert split_pairs == all_pairs
+    assert split_pairs == all_possible_pairs_of_suspects
 
     if num_innocents >= 6:
         assert saw_two_big_groups

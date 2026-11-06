@@ -82,6 +82,8 @@ def place_at_crime_slot(layout: Layout, suspects: tuple[Suspect, ...], crime: Cr
     # 3. Pick how many groups the Innocent Suspects form, and a different Room outside the Crime Room for each group.
     other_room_ids = [room_id for room_id in room_ids if room_id != crime.room_id]
     innocent_ids = [suspect.id for suspect in suspects if not suspect.is_murderer]
+
+    # The number of groups the Innocent Suspects can form is limited by the number of Non-Crime Rooms in the Layout.
     num_groups = rng.randint(1, min(len(innocent_ids) // 2, len(other_room_ids)))
     group_room_ids = rng.sample(other_room_ids, num_groups)
 
