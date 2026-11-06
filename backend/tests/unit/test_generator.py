@@ -6,7 +6,7 @@ import itertools
 from alibi.domain.generator import pick_layout, pick_roles, pick_crime, place_at_crime_slot
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
-from alibi.domain.types import Crime, Suspect, TIME_SLOTS, VICTIM_ID
+from alibi.domain.types import Crime, Suspect, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Every allowed Number of Suspects. The tests below run once for each of them.
@@ -34,13 +34,13 @@ def test_seeds_for_coverage_scales_with_the_outcomes(num_outcomes: int):
     for smallest_chance in [0.5, 1 / num_outcomes, 0.1, 0.01]:
         num_seeds = len(seeds_for_coverage(num_outcomes, smallest_chance))
 
-        # Asserts that the chance of missing any outcome is below MISS_CHANCE
+        # Asserts that the chance of missing any outcome is below MISS_CHANCE.
         assert num_outcomes * (1 - smallest_chance) ** num_seeds <= MISS_CHANCE
 
-        # Asserts that more outcomes get more Seeds
+        # Asserts that more outcomes get more Seeds.
         assert len(seeds_for_coverage(num_outcomes + 1, smallest_chance)) >= num_seeds
 
-        # Asserts that rarer outcomes (who have smaller chances) get more Seeds than frequent outcomes
+        # Asserts that rarer outcomes (who have smaller chances) get more Seeds than frequent outcomes.
         assert len(seeds_for_coverage(num_outcomes, smallest_chance / 2)) > num_seeds
 
 
@@ -165,14 +165,31 @@ def test_pick_roles_rejects_a_disallowed_number_of_suspects(num_suspects: int):
 ALL_LAYOUTS = [layout for layouts in LAYOUTS.values() for layout in layouts]
 ALL_LAYOUT_IDS = [layout.id for layout in ALL_LAYOUTS]
 
-# Every allowed Time-of-death Window for each Crime Slot, written by hand as in 'test_types.py' (CG-13, CG-16).
-ALLOWED_WINDOWS = {
-    1: [(0, 1, 2), (1, 2, 3)],
-    2: [(0, 1, 2), (1, 2, 3), (2, 3, 4)],
-    3: [(1, 2, 3), (2, 3, 4), (3, 4, 5)],
-    4: [(2, 3, 4), (3, 4, 5)],
-    5: [(3, 4, 5)],
-}
+# Helper function to list every allowed Time-of-death Window for each Crime Slot, built the same way as in 'test_types.py'.
+# It slides a Window of WINDOW_LENGTH Time Slots along the Night and notes every Crime Slot inside it (CG-13, CG-16).
+def allowed_windows() -> dict[int, list[tuple[int, ...]]]:
+    windows_of_slot = {}
+
+    for first_slot in range(len(TIME_SLOTS) - (WINDOW_LENGTH - 1)):
+        window = tuple(range(first_slot, first_slot + WINDOW_LENGTH))
+
+        for crime_slot in window:
+            if crime_slot >= 1:
+                windows_of_slot.setdefault(crime_slot, []).append(window)
+
+    return windows_of_slot
+
+# Every allowed Time-of-death Window for each Crime Slot, for the Time Slots of the Night.
+# Crime Slot 0 has None, because an innocent Suspect must see the Victim alive before the Crime (CG-16). 
+# For 6 Time Slots and WINDOW_LENGTH = 3, it looks like:
+# ALLOWED_WINDOWS = {
+#     1: [(0, 1, 2), (1, 2, 3)],
+#     2: [(0, 1, 2), (1, 2, 3), (2, 3, 4)],
+#     3: [(1, 2, 3), (2, 3, 4), (3, 4, 5)],
+#     4: [(2, 3, 4), (3, 4, 5)],
+#     5: [(3, 4, 5)],
+# }
+ALLOWED_WINDOWS = allowed_windows()
 
 # Defining a Test Function to check that the Crime Room is a Room of the House (CG-13).
 # The Crime itself already rejects a Crime Slot or a Window that the Rules do not allow.
@@ -197,11 +214,14 @@ def test_cg13_crime_covers_every_choice(layout: Layout):
 
     # Each Room has the chance 1 / R.
     # The rarest (Crime Slot, Window) pair has the chance 1 / num_crime_slots * 1 / max_num_of_windows_in_a_crime_slot.
-    # => 1 / NCS * 1 / 3
+    # Time Slot 0 is never a Crime Slot, so num_crime_slots = len(TIME_SLOTS) - 1.
+    # A Crime Slot can occur in at most WINDOW_LENGTH Windows, so max_num_of_windows_in_a_crime_slot <= WINDOW_LENGTH.
+    # => 1 / (len(TIME_SLOTS) - 1) * 1 / WINDOW_LENGTH
+    # => For 6 Time Slots and WINDOW_LENGTH = 3:
     # => 1 / 5 * 1 / 3
     # => 1 / 15
     room_seeds = seeds_for_coverage(len(all_room_ids), 1 / len(all_room_ids))
-    window_seeds = seeds_for_coverage(len(all_windows), 1 / (len(TIME_SLOTS) - 1) / 3)
+    window_seeds = seeds_for_coverage(len(all_windows), 1 / (len(TIME_SLOTS) - 1) / WINDOW_LENGTH)
 
     for seed in range(max(len(room_seeds), len(window_seeds))):
         crime = pick_crime(layout, random.Random(seed))
