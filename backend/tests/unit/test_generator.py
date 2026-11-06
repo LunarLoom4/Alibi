@@ -1,9 +1,13 @@
+import os
+import subprocess
+import sys
 import math
 import random
 import pytest
 import itertools
 
-from alibi.domain.generator import pick_layout, pick_roles, pick_crime, place_at_crime_slot
+import alibi
+from alibi.domain.generator import pick_layout, pick_roles, pick_crime, place_at_crime_slot, place_before_crime_slot
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
 from alibi.domain.types import Crime, Suspect, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
@@ -395,3 +399,143 @@ def test_place_at_crime_slot_rejects_a_crime_room_outside_the_house(layout: Layo
 
     with pytest.raises(ValueError):
         place_at_crime_slot(layout, suspects, crime, random.Random(0))
+
+
+# Helper function to build the Case up to the Crime Slot from one Seed, and then the Rooms of every Person before it.
+def case_before_crime_slot(
+    layout: Layout,
+    num_suspects: int,
+    num_murderers: int,
+    seed: int
+) -> tuple[Crime, dict[str, str], dict[str, tuple[str, ...]]]:
+    rng = random.Random(seed)
+    suspects = pick_roles(num_suspects, num_murderers, rng)
+    crime = pick_crime(layout, rng)
+    places = place_at_crime_slot(layout, suspects, crime, rng)
+    earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
+
+    return crime, places, earlier_rooms
+
+# Defining a Test Function to check that every Person gets one Room of the House for each Time Slot before the Crime Slot.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_every_person_has_a_room_before_the_crime_slot(layout: Layout, num_suspects: int, num_murderers: int):
+    room_ids = {room.id for room in layout.rooms}
+
+    for seed in SEEDS:
+        crime, places, earlier_rooms = case_before_crime_slot(layout, num_suspects, num_murderers, seed)
+
+        # Assert that the persons in 'earlier_rooms' are the same as in 'places'.
+        assert set(earlier_rooms) == set(places)
+
+        for rooms in earlier_rooms.values():
+            assert isinstance(rooms, tuple)
+            assert len(rooms) == crime.slot     # Asserts that there is one Room for each Time Slot before the Crime Slot.
+            assert set(rooms) <= room_ids       # Asserts that every Room assigned to every Person across all Time Slots is a Room of the House.
+
+# Defining a Test Function to check that, from one Time Slot to the next, every Person either stays in their Room or enters a Neighbor Room (CG-15).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg15_moves_before_the_crime_slot_use_the_doors(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        crime, places, earlier_rooms = case_before_crime_slot(layout, num_suspects, num_murderers, seed)
+
+        # The walk of each Person ends at their Place at the Crime Slot.
+        for person_id, rooms in earlier_rooms.items():
+            walk = rooms + (places[person_id],)
+
+            for time_slot in range(crime.slot):
+                from_room_id = walk[time_slot]
+                to_room_id = walk[time_slot + 1]
+
+                assert to_room_id == from_room_id or to_room_id in layout.neighbors(from_room_id), \
+                    f"'{person_id}' moved from '{from_room_id}' to '{to_room_id}' without a Door, after Time Slot {time_slot}."
+
+# Defining a Test Function to check that, over the Seeds, every Person can stay in a Room or come from each Room with a Door to it.
+# Each Room of the House holds one Person at the Crime Slot 1, so each of them takes exactly one step back.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
+def test_moves_before_the_crime_slot_cover_every_door(layout: Layout):
+    places = {f"person_in_{room.id}": room.id for room in layout.rooms}
+    crime = Crime(slot = 1, room_id = layout.rooms[0].id, window = tuple(range(WINDOW_LENGTH)))
+
+    all_moves = set()
+    picked_moves = set()
+
+    for room in layout.rooms:
+        all_moves.add((room.id, room.id))
+
+        for neighbor_id in layout.neighbors(room.id):
+            all_moves.add((neighbor_id, room.id))
+
+    # The step back from a Room with D Doors picks one of (D + 1) choices, so the rarest move has the chance 1 / (largest D + 1).
+    largest_doors = max(len(layout.neighbors(room.id)) for room in layout.rooms)
+
+    for seed in seeds_for_coverage(len(all_moves), 1 / (largest_doors + 1)):
+        earlier_rooms = place_before_crime_slot(layout, places, crime, random.Random(seed))
+
+        for person_id, rooms in earlier_rooms.items():
+            picked_moves.add((rooms[0], places[person_id]))
+
+    assert picked_moves == all_moves
+
+# Defining a Test Function to check that the same Seed always gives every Person the same Rooms before the Crime Slot (CG-1).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg1_same_seed_gives_the_same_rooms_before_the_crime_slot(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        first_case = case_before_crime_slot(layout, num_suspects, num_murderers, seed)
+        second_case = case_before_crime_slot(layout, num_suspects, num_murderers, seed)
+
+        assert first_case == second_case
+
+# Defining a Test Function to check that a Place outside the House is rejected.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
+def test_place_before_crime_slot_rejects_a_place_outside_the_house(layout: Layout):
+    places = {VICTIM_ID: layout.rooms[0].id, "suspect_1": "attic"}
+    crime = Crime(slot = 1, room_id = layout.rooms[0].id, window = tuple(range(WINDOW_LENGTH)))
+
+    with pytest.raises(ValueError):
+        place_before_crime_slot(layout, places, crime, random.Random(0))
+
+
+# Python code that a new Python process runs: It prints the Places and the Rooms before the Crime Slot.
+# It does so for every allowed (Layout, Suspects, Murderers).
+# A few Seeds are enough, because a choice that follows the order of a set changes the Case within the first few of them.
+CASE_SCRIPT = """
+import random
+
+from alibi.domain.generator import pick_crime, pick_roles, place_at_crime_slot, place_before_crime_slot
+from alibi.domain.layouts import LAYOUTS
+from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers
+
+for num_suspects in range(MIN_SUSPECTS, MAX_SUSPECTS + 1):
+    for num_murderers in range(1, max_murderers(num_suspects) + 1):
+        for layout in LAYOUTS[count_rooms(num_suspects)]:
+            for seed in range(10):
+                rng = random.Random(seed)
+                suspects = pick_roles(num_suspects, num_murderers, rng)
+                crime = pick_crime(layout, rng)
+                places = place_at_crime_slot(layout, suspects, crime, rng)
+                earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
+
+                print(sorted(places.items()), sorted(earlier_rooms.items()))
+"""
+
+# Defining a Test Function to check that the same Seed gives the same Case in every new Python process (CG-1).
+# Each new process orders a set of strings in its own way, chosen by PYTHONHASHSEED.
+# So a random choice that follows the order of a set gives another Case in another process, and this test catches it.
+def test_cg1_same_seed_gives_the_same_case_in_every_process():
+    # The new process imports 'alibi' from the same folder as this test run does.
+    source_folder = os.path.dirname(os.path.dirname(alibi.__file__))
+    outputs = []
+
+    for hash_seed in ["0", "1", "2"]:
+        environment = dict(os.environ, PYTHONHASHSEED = hash_seed, PYTHONPATH = source_folder)
+        result = subprocess.run(
+            [sys.executable, "-c", CASE_SCRIPT],
+            env = environment,
+            capture_output = True,
+            text = True,
+            check = True
+        )
+        outputs.append(result.stdout)
+
+    assert outputs[0] != ""
+    assert outputs[0] == outputs[1] == outputs[2]
