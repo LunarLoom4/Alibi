@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms
-from alibi.domain.types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID
+from alibi.domain.types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Every Role that a Suspect can be given, whether the Rules allow it or not.
@@ -136,7 +136,7 @@ def test_room_of_rejects_an_unknown_person():
     with pytest.raises(ValueError):
         grid.room_of("suspect_1", 0)
 
-# Defining a Test Function to check that 'room_of' rejects a Time Slot outside 0 to 5, instead of reading from the end of the Row.
+# Defining a Test Function to check that 'room_of' rejects a Time Slot outside the Night, instead of reading from the end of the Row.
 @pytest.mark.parametrize("time_slot", [-1, len(TIME_SLOTS)])
 def test_room_of_rejects_a_nonexistent_time_slot(time_slot: int):
     grid = TimelineGrid(locations = {VICTIM_ID: ("hall",) * len(TIME_SLOTS)})
@@ -167,7 +167,7 @@ def test_kn3_roster_lists_only_the_persons_in_the_room(num_suspects: int):
                 for person_id in grid.locations:
                     assert person_id in grid.roster(grid.room_of(person_id, time_slot), time_slot)
 
-# Defining a Test Function to check that 'roster' rejects a Time Slot outside 0 to 5, like 'room_of' does.
+# Defining a Test Function to check that 'roster' rejects a Time Slot outside the Night, like 'room_of' does.
 @pytest.mark.parametrize("time_slot", [-1, len(TIME_SLOTS)])
 def test_roster_rejects_a_nonexistent_time_slot(time_slot: int):
     grid = TimelineGrid(locations = {VICTIM_ID: ("hall",) * len(TIME_SLOTS)})
@@ -176,21 +176,39 @@ def test_roster_rejects_a_nonexistent_time_slot(time_slot: int):
         grid.roster("hall", time_slot)
 
 
-# Every allowed Time-of-death Window for each Crime Slot: 3 consecutive Time Slots that hold the Crime Slot.
-# Slot 0 has none, because an Innocent Suspect must see the Victim alive before the Crime (CG-16).
-ALLOWED_WINDOWS = {
-    1: [(0, 1, 2), (1, 2, 3)],
-    2: [(0, 1, 2), (1, 2, 3), (2, 3, 4)],
-    3: [(1, 2, 3), (2, 3, 4), (3, 4, 5)],
-    4: [(2, 3, 4), (3, 4, 5)],
-    5: [(3, 4, 5)],
-}
+# Helper function to list every allowed Time-of-death Window for each Crime Slot, for any Number of Time Slots.
+# It slides a Window of WINDOW_LENGTH Time Slots along the Night and notes every Crime Slot inside it (CG-13).
+# Time Slot 0 is never a Crime Slot, because an Innocent Suspect must see the Victim alive before the Crime (CG-16).
+def allowed_windows() -> dict[int, list[tuple[int, ...]]]:
+    windows_of_slot = {}
 
-# Defining a Test Function to check every pair of a Crime Slot and a Window of 3 consecutive Time Slots (CG-13, CG-16).
+    for first_slot in range(len(TIME_SLOTS) - (WINDOW_LENGTH - 1)):
+        window = tuple(range(first_slot, first_slot + WINDOW_LENGTH))
+
+        for crime_slot in window:
+            if crime_slot >= 1:
+                windows_of_slot.setdefault(crime_slot, []).append(window)
+
+    return windows_of_slot
+
+# Every allowed Time-of-death Window for each Crime Slot, for the Time Slots of the Night.
+# Crime Slot 0 has None, because an innocent Suspect must see the Victim alive before the Crime (CG-16). 
+# For 6 Time Slots and WINDOW_LENGTH = 3, it looks like:
+# ALLOWED_WINDOWS = {
+#     1: [(0, 1, 2), (1, 2, 3)],
+#     2: [(0, 1, 2), (1, 2, 3), (2, 3, 4)],
+#     3: [(1, 2, 3), (2, 3, 4), (3, 4, 5)],
+#     4: [(2, 3, 4), (3, 4, 5)],
+#     5: [(3, 4, 5)],
+# }
+ALLOWED_WINDOWS = allowed_windows()
+
+# Defining a Test Function to check every pair of a Crime Slot and a Window of consecutive Time Slots (CG-13, CG-16).
+# The Crime Slots and the Window starts run one step past both ends of the Night, so every edge is tried.
 @pytest.mark.parametrize("crime_slot", range(-1, len(TIME_SLOTS) + 1))
 @pytest.mark.parametrize("first_slot", range(-1, len(TIME_SLOTS)))
 def test_cg13_cg16_crime_slot_lies_in_its_window(first_slot: int, crime_slot: int):
-    window = (first_slot, first_slot + 1, first_slot + 2)
+    window = tuple(range(first_slot, first_slot + WINDOW_LENGTH))
 
     if window in ALLOWED_WINDOWS.get(crime_slot, []):
         crime = Crime(slot = crime_slot, room_id = "hall", window = window)
@@ -205,13 +223,29 @@ def test_cg13_cg16_crime_slot_lies_in_its_window(first_slot: int, crime_slot: in
         with pytest.raises(ValueError):
             Crime(slot = crime_slot, room_id = "hall", window = window)
 
-# Defining a Test Function to check that a Window which is not 3 consecutive Time Slots is rejected.
-@pytest.mark.parametrize("window", [(), (1, 2), (1, 2, 3, 4), (1, 2, 4), (2, 2, 3), (3, 2, 1)])
-def test_cg13_window_is_three_consecutive_slots(window: tuple):
+# A valid Window that holds the Crime Slot 1. It starts at Time Slot 1, or at Time Slot 0 when the Window is as long as the Night.
+# Every bad Window below except the Empty one is built from it, and still holds the Crime Slot 1.
+GOOD_WINDOW_START = 1 if WINDOW_LENGTH < len(TIME_SLOTS) else 0
+GOOD_WINDOW = tuple(range(GOOD_WINDOW_START, GOOD_WINDOW_START + WINDOW_LENGTH))
+
+# Every way a Window can break its shape (CG-13).
+# For 6 Time Slots and WINDOW_LENGTH = 3, these break down to [(), (1, 2), (1, 2, 3, 4), (1, 2, 4), (2, 2, 3), (3, 2, 1)].
+BAD_WINDOWS = [
+    pytest.param((),                                        id = "Empty"),
+    pytest.param(GOOD_WINDOW[:-1],                          id = "One Time Slot short"),
+    pytest.param(GOOD_WINDOW + (GOOD_WINDOW[-1] + 1,),      id = "One Time Slot too many"),
+    pytest.param(GOOD_WINDOW[:-1] + (GOOD_WINDOW[-1] + 1,), id = "A gap before the last Time Slot"),
+    pytest.param((GOOD_WINDOW[0],) + GOOD_WINDOW[:-1],      id = "A repeated Time Slot"),
+    pytest.param(tuple(reversed(GOOD_WINDOW)),              id = "Reversed"),
+]
+
+# Defining a Test Function to check that a Window which is not WINDOW_LENGTH consecutive Time Slots is rejected.
+@pytest.mark.parametrize("window", BAD_WINDOWS)
+def test_cg13_window_is_consecutive_slots(window: tuple):
     with pytest.raises(ValueError):
-        Crime(slot = 2, room_id = "hall", window = window)
+        Crime(slot = 1, room_id = "hall", window = window)
 
 # Defining a Test Function to check that the Window must be a tuple, like the Rows of the Timeline Grid.
 def test_crime_rejects_a_window_that_is_not_a_tuple():
     with pytest.raises(TypeError):
-        Crime(slot = 2, room_id = "hall", window = [1, 2, 3])
+        Crime(slot = 1, room_id = "hall", window = list(GOOD_WINDOW))
