@@ -2,7 +2,7 @@ import random
 
 from .layouts import Layout, LAYOUTS
 from .parameters import count_rooms, max_red_herrings
-from .types import Crime, Suspect, TIME_SLOTS, VICTIM_ID
+from .types import Crime, Suspect, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Picks the House of a Case: One of the Layouts with the Number of Rooms that CG-2 gives for this Number of Suspects.
@@ -50,16 +50,16 @@ def pick_crime(layout: Layout, rng: random.Random) -> Crime:
     # 2. The Crime can happen in any Room of the House.
     room_id = rng.choice([room.id for room in layout.rooms])
 
-    # 3. The Window is 3 consecutive Time Slots that hold the Crime Slot and stay inside the Night.
+    # 3. The Window is WINDOW_LENGTH consecutive Time Slots that hold the Crime Slot and stay inside the Night.
     window_starts = []
 
-    for window_start in range(crime_slot - 2, crime_slot + 1):
-        if window_start >= 0 and window_start + 2 < len(TIME_SLOTS):
+    for window_start in range(crime_slot - (WINDOW_LENGTH - 1), crime_slot + 1):
+        if window_start >= 0 and window_start + WINDOW_LENGTH <= len(TIME_SLOTS):
             window_starts.append(window_start)
 
     first_slot = rng.choice(window_starts)
 
-    return Crime(slot = crime_slot, room_id = room_id, window = (first_slot, first_slot + 1, first_slot + 2))
+    return Crime(slot = crime_slot, room_id = room_id, window = tuple(range(first_slot, first_slot + WINDOW_LENGTH)))
 
 
 # Places every Person at the Crime Slot, and returns the Room ID of each Person ID.
