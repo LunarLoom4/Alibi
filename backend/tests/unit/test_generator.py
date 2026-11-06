@@ -391,7 +391,7 @@ def test_cg1_same_seed_gives_the_same_places(layout: Layout, num_suspects: int, 
 def test_place_at_crime_slot_rejects_a_crime_room_outside_the_house(layout: Layout):
     num_suspects = MIN_SUSPECTS
     suspects = pick_roles(num_suspects, 1, random.Random(0))
-    crime = Crime(slot = 2, room_id = "attic", window = (1, 2, 3))
+    crime = Crime(slot = 1, room_id = "attic", window = tuple(range(WINDOW_LENGTH)))
 
     with pytest.raises(ValueError):
         place_at_crime_slot(layout, suspects, crime, random.Random(0))
