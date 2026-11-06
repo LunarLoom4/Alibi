@@ -99,3 +99,36 @@ def place_at_crime_slot(layout: Layout, suspects: tuple[Suspect, ...], crime: Cr
         places[innocent_id] = rng.choice(group_room_ids)
 
     return places
+
+
+# Places every Person at each Time Slot before the Crime Slot, and returns the Rooms of each Person ID from Time Slot 0 to the one just before the Crime Slot.
+# It walks back in time from the Places at the Crime Slot, so every Person reaches their Place through the Doors of the House (CG-15).
+def place_before_crime_slot(
+    layout: Layout,
+    places: dict[str, str],
+    crime: Crime,
+    rng: random.Random
+) -> dict[str, tuple[str, ...]]:
+    # 1. A Place outside the House has no Doors to walk through, so it is rejected.
+    room_ids = [room.id for room in layout.rooms]
+
+    for person_id, room_id in places.items():
+        if room_id not in room_ids:
+            raise ValueError(f"'{person_id}' is in the Room '{room_id}', which is not a Room of Layout '{layout.id}'.")
+
+    # 2. Walk every Person back one Time Slot at a time: Each step stays in the Room or goes through one of its Doors (CG-15).
+    # The Neighbors are sorted, because the order of a set of strings changes between Python processes.
+    # Without the sorting, the same Seed could give another Case on another run (CG-1).
+    earlier_rooms = {}
+
+    for person_id, room_id in places.items():
+        walk = [room_id]
+
+        for _ in range(crime.slot):
+            choices = [walk[-1]] + sorted(layout.neighbors(walk[-1]))
+            walk.append(rng.choice(choices))
+
+        # 3. The walk runs backward in time, so reverse it, and leave out the Place at the Crime Slot.
+        earlier_rooms[person_id] = tuple(reversed(walk[1:]))
+
+    return earlier_rooms
