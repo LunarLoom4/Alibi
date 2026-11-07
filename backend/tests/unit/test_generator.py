@@ -9,7 +9,7 @@ import itertools
 import alibi
 from alibi.domain.generator import pick_layout, pick_roles, pick_crime
 from alibi.domain.generator import place_at_crime_slot, place_before_crime_slot, place_after_crime_slot
-from alibi.domain.generator import build_timeline
+from alibi.domain.generator import build_timeline, find_witnesses
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
 from alibi.domain.types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
@@ -830,3 +830,54 @@ def test_cg1_same_seed_gives_the_same_timeline(layout: Layout, num_suspects: int
         second_case = case_timeline(layout, num_suspects, num_murderers, seed)
 
         assert first_case == second_case
+
+
+# Defining a Test Function to check 'find_witnesses' on every generated Case against the Room Rosters (CG-16, KN-3).
+# Before the Crime Slot, every Innocent Suspect in the Roster of the Victim's Room saw the Victim alive at that Time Slot.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg16_witnesses_match_the_rosters(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        suspects, crime, grid = case_timeline(layout, num_suspects, num_murderers, seed)
+        innocent_ids = {suspect.id for suspect in suspects if not suspect.is_murderer}
+        expected_witnesses = {}
+
+        for time_slot in range(crime.slot):
+            for person_id in grid.roster(grid.room_of(VICTIM_ID, time_slot), time_slot):
+                if person_id in innocent_ids:
+                    expected_witnesses[person_id] = expected_witnesses.get(person_id, ()) + (time_slot,)
+
+        assert find_witnesses(grid, suspects, crime) == expected_witnesses
+
+# Every (Crime Slot, Time Slot of the sighting) pair of the Night. The sighting counts ONLY before the Crime Slot.
+SIGHTING_CASES = [
+    pytest.param(crime_slot, sighting_slot, id = f"Crime-{crime_slot}-Sighting-{sighting_slot}")
+    for crime_slot in range(1, len(TIME_SLOTS))
+    for sighting_slot in range(len(TIME_SLOTS))
+]
+
+# Defining a Test Function to check that a meeting with the Victim makes a Witness ONLY before the Crime Slot (CG-16).
+# The Innocent Suspect meets the Victim at one Time Slot. The Murderer is with the Victim all Night, and is never a Witness.
+@pytest.mark.parametrize("crime_slot, sighting_slot", SIGHTING_CASES)
+def test_cg16_witnesses_saw_the_victim_before_the_crime_slot(crime_slot: int, sighting_slot: int):
+    murderer = Suspect(id = "suspect_1", is_murderer = True, is_red_herring = False)
+    innocent = Suspect(id = "suspect_2", is_murderer = False, is_red_herring = False)
+    innocent_rooms = []
+
+    for time_slot in range(len(TIME_SLOTS)):
+        if time_slot == sighting_slot:
+            innocent_rooms.append("hall")
+
+        else:
+            innocent_rooms.append("study")
+
+    grid = TimelineGrid(locations = {
+        VICTIM_ID: ("hall",) * len(TIME_SLOTS),
+        murderer.id: ("hall",) * len(TIME_SLOTS),
+        innocent.id: tuple(innocent_rooms),
+    })
+    crime = Crime(slot = crime_slot, room_id = "hall", window = ALLOWED_WINDOWS[crime_slot][0])
+
+    if sighting_slot < crime_slot:
+        assert find_witnesses(grid, (murderer, innocent), crime) == {innocent.id: (sighting_slot,)}
+    else:
+        assert find_witnesses(grid, (murderer, innocent), crime) == {}

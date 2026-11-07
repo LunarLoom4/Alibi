@@ -203,3 +203,24 @@ def build_timeline(layout: Layout, suspects: tuple[Suspect, ...], crime: Crime, 
         locations[person_id] = earlier_rooms[person_id] + (places[person_id],) + later_rooms[person_id]
 
     return TimelineGrid(locations = locations)
+
+
+# Finds the Witnesses of a Case: Every Innocent Suspect who saw the Victim alive, with the Time Slots when they did (CG-16).
+# To see the Victim, a Suspect must be in the same Room at the same Time Slot (KN-3), and the Victim is alive ONLY before the Crime Slot.
+# Each sighting tells the Detectives that the Crime came later, so the Witnesses help them find the Crime Slot.
+def find_witnesses(grid: TimelineGrid, suspects: tuple[Suspect, ...], crime: Crime) -> dict[str, tuple[int, ...]]:
+    witnesses = {}
+
+    for suspect in suspects:
+        # CG-16 asks ONLY for Innocent Suspects: A Murderer lies about the Time-of-death Window (LI-2), so the Detectives cannot trust their sighting.
+        if not suspect.is_murderer:
+            sighting_slots = []
+
+            for time_slot in range(crime.slot):
+                if grid.room_of(suspect.id, time_slot) == grid.room_of(VICTIM_ID, time_slot):
+                    sighting_slots.append(time_slot)
+
+            if sighting_slots:
+                witnesses[suspect.id] = tuple(sighting_slots)
+
+    return witnesses
