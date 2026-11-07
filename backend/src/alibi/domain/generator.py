@@ -117,7 +117,7 @@ def place_before_crime_slot(
             raise ValueError(f"'{person_id}' is in the Room '{room_id}', which is not a Room of Layout '{layout.id}'.")
 
     # 2. Walk every Person back one Time Slot at a time: Each step stays in the Room or goes through one of its Doors (CG-15).
-    # The Neighbors of a room are sorted, because the order of a 'set' of strings changes between Python processes since sets don't have order.
+    # The Neighbors of a Room are sorted, because the order of a 'set' of strings changes between Python processes since sets don't have an iteration order.
     # Without the sorting, the same Seed could give another Case on another run (CG-1).
     earlier_rooms = {}
 
@@ -132,3 +132,52 @@ def place_before_crime_slot(
         earlier_rooms[person_id] = tuple(reversed(walk[1:]))
 
     return earlier_rooms
+
+
+# Places every Person at each Time Slot after the Crime Slot, and returns the Rooms of each Person ID up to the last Time Slot.
+# After the Crime Slot, a move is no longer limited to one Door per Time Slot (CG-15): A Person can be in any allowed Room at the next Time Slot.
+# a. The Victim stays in the Crime Room until the end of the Night (CG-3).
+# b. A Murderer can go to any Room, the Crime Room included, and the Murderers can split up (CG-19).
+# c. An Innocent Suspect never enters the Crime Room, because whoever found the Body would call the Police at once (CG-18).
+#    So they ONLY reach the Rooms they can walk to from their Place at the Crime Slot without passing through the Crime Room.
+def place_after_crime_slot(
+    layout: Layout,
+    suspects: tuple[Suspect, ...],
+    places: dict[str, str],
+    crime: Crime,
+    rng: random.Random
+) -> dict[str, tuple[str, ...]]:
+    # 1. A Crime Room outside the House would leave the Victim nowhere, and a Suspect needs a Place in the House to move on from.
+    # So both are rejected.
+    room_ids = [room.id for room in layout.rooms]
+
+    if crime.room_id not in room_ids:
+        raise ValueError(f"The Crime Room '{crime.room_id}' is not a Room of Layout '{layout.id}'.")
+
+    for suspect in suspects:
+        if places.get(suspect.id) not in room_ids:
+            raise ValueError(f"'{suspect.id}' has no Place in a Room of Layout '{layout.id}' at the Crime Slot.")
+
+    num_later_slots = len(TIME_SLOTS) - 1 - crime.slot
+
+    # 2. The Victim stays in the Crime Room (CG-3).
+    later_rooms = {VICTIM_ID: (crime.room_id,) * num_later_slots}
+
+    # 3. Pick the Rooms each Suspect may be in, in the order of the House, so the same Seed gives the same Case (CG-1).
+    for suspect in suspects:
+        if suspect.is_murderer:
+            allowed_room_ids = room_ids
+
+        else:
+            reachable_room_ids = layout.reachable_rooms(places[suspect.id], crime.room_id)
+            allowed_room_ids = [room_id for room_id in room_ids if room_id in reachable_room_ids]
+
+        # 4. Draw one of those Rooms for each Time Slot after the Crime Slot.
+        rooms = []
+
+        for _ in range(num_later_slots):
+            rooms.append(rng.choice(allowed_room_ids))
+
+        later_rooms[suspect.id] = tuple(rooms)
+
+    return later_rooms

@@ -7,7 +7,8 @@ import pytest
 import itertools
 
 import alibi
-from alibi.domain.generator import pick_layout, pick_roles, pick_crime, place_at_crime_slot, place_before_crime_slot
+from alibi.domain.generator import pick_layout, pick_roles, pick_crime
+from alibi.domain.generator import place_at_crime_slot, place_before_crime_slot, place_after_crime_slot
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
 from alibi.domain.types import Crime, Suspect, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
@@ -424,7 +425,7 @@ def test_every_person_has_a_room_before_the_crime_slot(layout: Layout, num_suspe
     for seed in SEEDS:
         crime, places, earlier_rooms = case_before_crime_slot(layout, num_suspects, num_murderers, seed)
 
-        # Assert that the persons in 'earlier_rooms' are the same as in 'places'.
+        # Assert that the people in 'earlier_rooms' are also in the 'places' dictionary.
         assert set(earlier_rooms) == set(places)
 
         for rooms in earlier_rooms.values():
@@ -465,10 +466,14 @@ def test_moves_before_the_crime_slot_cover_every_door(layout: Layout):
         for neighbor_id in layout.neighbors(room.id):
             all_moves.add((neighbor_id, room.id))
 
-    # The step back from a Room with D Doors picks one of (D + 1) choices, so the rarest move has the chance 1 / (largest D + 1).
-    largest_doors = max(len(layout.neighbors(room.id)) for room in layout.rooms)
+    # From a Room with D Doors, there are D + 1 choices in front of a Person.
+    max_doors_from_a_room = max(len(layout.neighbors(room.id)) for room in layout.rooms)
 
-    for seed in seeds_for_coverage(len(all_moves), 1 / (largest_doors + 1)):
+    # Each seed allows 'len(places)' number of People to choose the first and the last Rooms.
+    # Among all possible start-and-end room combinations, the smallest chance exists for the room with the most number of Doors attached to it.
+    # That smallest chance is 1 / (max_doors_from_a_room + 1).
+    # '+1' has been added because a person can choose to stay in the same room as well, so D + 1 choices per room with D Doors.
+    for seed in seeds_for_coverage(len(all_moves), 1 / (max_doors_from_a_room + 1)):
         earlier_rooms = place_before_crime_slot(layout, places, crime, random.Random(seed))
 
         for person_id, rooms in earlier_rooms.items():
@@ -495,13 +500,13 @@ def test_place_before_crime_slot_rejects_a_place_outside_the_house(layout: Layou
         place_before_crime_slot(layout, places, crime, random.Random(0))
 
 
-# Python code that a new Python process runs: It prints the Places and the Rooms before the Crime Slot.
+# Python code that a new Python process runs: It prints the Places and the Rooms before and after the Crime Slot.
 # It does so for every allowed (Layout, Suspects, Murderers).
 # A few Seeds are enough, because a choice that follows the order of a set changes the Case within the first few of them.
 CASE_SCRIPT = """
 import random
 
-from alibi.domain.generator import pick_crime, pick_roles, place_at_crime_slot, place_before_crime_slot
+from alibi.domain.generator import pick_crime, pick_roles, place_at_crime_slot, place_before_crime_slot, place_after_crime_slot
 from alibi.domain.layouts import LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers
 
@@ -514,6 +519,7 @@ for num_suspects in range(MIN_SUSPECTS, MAX_SUSPECTS + 1):
                 crime = pick_crime(layout, rng)
                 places = place_at_crime_slot(layout, suspects, crime, rng)
                 earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
+                later_rooms = place_after_crime_slot(layout, suspects, places, crime, rng)
 
                 print(sorted(places.items()), sorted(earlier_rooms.items()))
 """
@@ -539,3 +545,206 @@ def test_cg1_same_seed_gives_the_same_case_in_every_process():
 
     assert outputs[0] != ""
     assert outputs[0] == outputs[1] == outputs[2]
+
+
+# Helper function to build the Case up to the Crime Slot from one Seed, and then the Rooms of every Person after it.
+def case_after_crime_slot(
+    layout: Layout,
+    num_suspects: int,
+    num_murderers: int,
+    seed: int
+) -> tuple[tuple[Suspect, ...], Crime, dict[str, str], dict[str, tuple[str, ...]]]:
+    rng = random.Random(seed)
+    suspects = pick_roles(num_suspects, num_murderers, rng)
+    crime = pick_crime(layout, rng)
+    places = place_at_crime_slot(layout, suspects, crime, rng)
+    later_rooms = place_after_crime_slot(layout, suspects, places, crime, rng)
+
+    return suspects, crime, places, later_rooms
+
+# Defining a Test Function to check that every Person gets one Room of the House for each Time Slot after the Crime Slot.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_every_person_has_a_room_after_the_crime_slot(layout: Layout, num_suspects: int, num_murderers: int):
+    room_ids = {room.id for room in layout.rooms}
+
+    for seed in SEEDS:
+        suspects, crime, places, later_rooms = case_after_crime_slot(layout, num_suspects, num_murderers, seed)
+
+        # Assert that the people in 'later_rooms' are also in the 'suspects' tuple.
+        assert set(later_rooms) == {VICTIM_ID} | {suspect.id for suspect in suspects}
+
+        for rooms in later_rooms.values():
+            assert isinstance(rooms, tuple)
+            assert len(rooms) == len(TIME_SLOTS) - 1 - crime.slot       # Size of 'rooms' must be equal to the Time Slots remaining 'after' the Crime Slot.
+            assert set(rooms) <= room_ids                               # Every Room assigned to every Person across all Time Slots is a Room of the House.
+
+# Defining a Test Function to check that the Victim stays in the Crime Room after the Crime Slot (CG-3).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg3_victim_stays_in_the_crime_room(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        suspects, crime, places, later_rooms = case_after_crime_slot(layout, num_suspects, num_murderers, seed)
+
+        assert set(later_rooms[VICTIM_ID]) <= {crime.room_id}   # '<=' because the Crime Slot can be the last slot in 'TIME_SLOTS'.
+
+# Defining a Test Function to check that, after the Crime Slot, no Innocent Suspect enters the Crime Room or passes through it (CG-18).
+# Each of them stays among the Rooms they can walk to from their Place at the Crime Slot without the Crime Room.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg18_no_innocent_enters_the_crime_room(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        suspects, crime, places, later_rooms = case_after_crime_slot(layout, num_suspects, num_murderers, seed)
+
+        for suspect in suspects:
+            if not suspect.is_murderer:
+                reachable_room_ids = layout.reachable_rooms(places[suspect.id], crime.room_id)
+
+                assert crime.room_id not in later_rooms[suspect.id]
+                assert set(later_rooms[suspect.id]) <= reachable_room_ids
+
+# Every (Layout, Crime Room) pair. The Crime Room decides which Rooms an Innocent Suspect can reach after the Crime Slot.
+CRIME_ROOM_CASES = [
+    pytest.param(layout, room.id, id = f"{layout.id}-{room.id}")
+    for layout in ALL_LAYOUTS
+    for room in layout.rooms
+]
+
+# Helper function to place one Murderer in the Crime Room and one Innocent Suspect in every other Room at the Crime Slot 1.
+# With the Crime Slot 1, every Suspect has len(TIME_SLOTS) - 2 Time Slots left to move, which is one or more for 3 or more Time Slots.
+def every_room_at_crime_slot_1(layout: Layout, crime_room_id: str) -> tuple[tuple[Suspect, ...], Crime, dict[str, str]]:
+    murderer = Suspect(id = "murderer", is_murderer = True, is_red_herring = False)
+    suspects = [murderer]
+    places = {VICTIM_ID: crime_room_id, murderer.id: crime_room_id}
+
+    for room in layout.rooms:
+        if room.id != crime_room_id:
+            innocent = Suspect(id = f"innocent_in_{room.id}", is_murderer = False, is_red_herring = False)
+            suspects.append(innocent)
+            places[innocent.id] = room.id
+
+    crime = Crime(slot = 1, room_id = crime_room_id, window = tuple(range(WINDOW_LENGTH)))
+
+    return tuple(suspects), crime, places
+
+# Defining a Test Function to check that, over the Seeds, a Murderer can be in every Room at the Time Slot just after the Crime Slot.
+# It also checks that each Innocent Suspect can be in every Room there that they can reach without passing through the Crime Room.
+# That move is not limited to one Door (CG-15), and the Murderer may stay in the Crime Room.
+@pytest.mark.skipif(len(TIME_SLOTS) < 3, reason = "The Night has no Time Slot after the Crime Slot 1.")
+@pytest.mark.parametrize("layout, crime_room_id", CRIME_ROOM_CASES)
+def test_moves_after_the_crime_slot_cover_every_room(layout: Layout, crime_room_id: str):
+    suspects, crime, places = every_room_at_crime_slot_1(layout, crime_room_id)
+    num_rooms = len(layout.rooms)
+
+    all_rooms = set()
+    picked_rooms = set()
+
+    for suspect in suspects:
+        if suspect.is_murderer:
+            allowed_room_ids = {room.id for room in layout.rooms}
+        else:
+            allowed_room_ids = layout.reachable_rooms(places[suspect.id], crime_room_id)
+
+        for room_id in allowed_room_ids:
+            all_rooms.add((suspect.id, room_id))
+
+    # A Suspect picks each of their allowed Rooms with the chance 1 / (Number of allowed Rooms), which is 1 / R or more.
+    for seed in seeds_for_coverage(len(all_rooms), 1 / num_rooms):
+        later_rooms = place_after_crime_slot(layout, suspects, places, crime, random.Random(seed))
+
+        for suspect in suspects:
+            picked_rooms.add((suspect.id, later_rooms[suspect.id][0]))
+
+    assert picked_rooms == all_rooms
+
+# Defining a Test Function to check that, over the Seeds, a Suspect can go between any two allowed Rooms after the Crime Slot.
+# There are no Doors to follow after the Crime Slot (CG-15), so every pair of allowed Rooms is a possible move, and staying too.
+# A move between two Time Slots after the Crime Slot 1 needs 2 or more of them, so the Night must have 4 or more Time Slots.
+@pytest.mark.skipif(len(TIME_SLOTS) < 4, reason = "The Night is too short for two Time Slots after the Crime Slot 1.")
+@pytest.mark.parametrize("layout, crime_room_id", CRIME_ROOM_CASES)
+def test_moves_after_the_crime_slot_reach_any_allowed_room(layout: Layout, crime_room_id: str):
+    suspects, crime, places = every_room_at_crime_slot_1(layout, crime_room_id)
+    num_rooms = len(layout.rooms)
+
+    all_moves = set()
+    picked_moves = set()
+
+    for suspect in suspects:
+        if suspect.is_murderer:
+            allowed_room_ids = {room.id for room in layout.rooms}
+        else:
+            allowed_room_ids = layout.reachable_rooms(places[suspect.id], crime_room_id)
+
+        for from_room_id, to_room_id in itertools.product(allowed_room_ids, repeat = 2):
+            all_moves.add((suspect.id, from_room_id, to_room_id))
+
+    # A move is two draws in a row, so each one has the chance 1 / (Number of allowed Rooms) ** 2, which is 1 / R ** 2 or more.
+    for seed in seeds_for_coverage(len(all_moves), 1 / num_rooms ** 2):
+        later_rooms = place_after_crime_slot(layout, suspects, places, crime, random.Random(seed))
+
+        for suspect in suspects:
+            rooms = later_rooms[suspect.id]
+            for time_slot in range(len(rooms) - 1):
+                picked_moves.add((suspect.id, rooms[time_slot], rooms[time_slot + 1]))
+
+    assert picked_moves == all_moves
+
+# Defining a Test Function to check that, over the Seeds, two Murderers can stay together or split up after the Crime Slot (CG-19).
+@pytest.mark.skipif(len(TIME_SLOTS) < 3, reason = "The Night has no Time Slot after the Crime Slot 1.")
+@pytest.mark.parametrize("layout, crime_room_id", CRIME_ROOM_CASES)
+def test_cg19_murderers_can_split_up_after_the_crime_slot(layout: Layout, crime_room_id: str):
+    first_murderer = Suspect(id = "suspect_1", is_murderer = True, is_red_herring = False)
+    second_murderer = Suspect(id = "suspect_2", is_murderer = True, is_red_herring = False)
+
+    places = {VICTIM_ID: crime_room_id, first_murderer.id: crime_room_id, second_murderer.id: crime_room_id}
+    crime = Crime(slot = 1, room_id = crime_room_id, window = tuple(range(WINDOW_LENGTH)))
+
+    saw_together = False
+    saw_apart = False
+
+    # Just after the Crime Slot, the two Murderers share a Room with the chance 1 / R, and are apart with the chance (R - 1) / R.
+    # So, we take the minimum of these chances to cover both scenarios.
+    for seed in seeds_for_coverage(2, 1 / len(layout.rooms)):
+        later_rooms = place_after_crime_slot(layout, (first_murderer, second_murderer), places, crime, random.Random(seed))
+
+        if later_rooms[first_murderer.id][0] == later_rooms[second_murderer.id][0]:
+            saw_together = True
+        else:
+            saw_apart = True
+
+    assert saw_together
+    assert saw_apart
+
+# Defining a Test Function to check that the same Seed always gives every Person the same Rooms after the Crime Slot (CG-1).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg1_same_seed_gives_the_same_rooms_after_the_crime_slot(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        first_case = case_after_crime_slot(layout, num_suspects, num_murderers, seed)
+        second_case = case_after_crime_slot(layout, num_suspects, num_murderers, seed)
+
+        assert first_case == second_case
+
+# Defining a Test Function to check that a Crime Room outside the House is rejected, and so is a Suspect without a Place in the House.
+# The Crime Room is checked with every Suspect and with the Murderer alone, so the error cannot come ONLY from an Innocent Suspect.
+# Each Suspect is checked with a missing Place and with a Place outside the House, and the error must name that Suspect.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
+def test_place_after_crime_slot_rejects_a_place_outside_the_house(layout: Layout):
+    suspects, crime, places = every_room_at_crime_slot_1(layout, layout.rooms[0].id)
+    crime_outside = Crime(slot = 1, room_id = "attic", window = tuple(range(WINDOW_LENGTH)))
+
+    with pytest.raises(ValueError):
+        place_after_crime_slot(layout, suspects, places, crime_outside, random.Random(0))
+
+    # The first Suspect of the helper is the Murderer.
+    with pytest.raises(ValueError):
+        place_after_crime_slot(layout, suspects[:1], places, crime_outside, random.Random(0))
+
+    for suspect in suspects:
+        places_without_suspect = dict(places)
+        places_without_suspect.pop(suspect.id)
+
+        places_outside = dict(places)
+        places_outside[suspect.id] = "attic"
+
+        with pytest.raises(ValueError, match = suspect.id):
+            place_after_crime_slot(layout, suspects, places_without_suspect, crime, random.Random(0))
+
+        with pytest.raises(ValueError, match = suspect.id):
+            place_after_crime_slot(layout, suspects, places_outside, crime, random.Random(0))
