@@ -128,6 +128,52 @@ def test_neighbors_match_the_doors(layout: Layout):
         assert len(layout.neighbors(room.id)) == len(doors_of_room)
         assert room.id not in layout.neighbors(room.id)
 
+# Helper function to find, by hand over the Doors, the Rooms a Person can walk to from a Room without entering the avoided Room.
+# It reads the Doors directly instead of 'neighbors', so it checks 'reachable_rooms' in a second, independent way.
+def rooms_reachable_by_hand(layout: Layout, room_id: str, avoided_room_id: str) -> set[str]:
+    reached = {room_id}
+    found_new_room = True
+
+    # Go over every Door, both ways, again and again until no Door leads to a new Room.
+    while found_new_room:
+        found_new_room = False
+
+        for room_a, room_b in layout.doors:
+            for from_room_id, to_room_id in [(room_a, room_b), (room_b, room_a)]:
+                if from_room_id in reached and to_room_id != avoided_room_id and to_room_id not in reached:
+                    reached.add(to_room_id)
+                    found_new_room = True
+
+    return reached
+
+# Defining a Test Function to check 'reachable_rooms' from all other Rooms of the House, except the one that has been marked as 'avoided' (CG-18).
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_cg18_reachable_rooms_avoid_a_room(layout: Layout):
+    for avoided_room in layout.rooms:
+        for room in layout.rooms:
+            if room.id == avoided_room.id:
+                continue
+
+            reachable = layout.reachable_rooms(room.id, avoided_room.id)
+
+            assert reachable == rooms_reachable_by_hand(layout, room.id, avoided_room.id)
+            assert room.id in reachable
+            assert avoided_room.id not in reachable
+
+# Defining a Test Function to check that 'reachable_rooms' rejects a Room outside the House, and a start inside the avoided Room.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_reachable_rooms_rejects_a_bad_room(layout: Layout):
+    first_room_id = layout.rooms[0].id
+
+    with pytest.raises(ValueError):
+        layout.reachable_rooms("attic", first_room_id)
+
+    with pytest.raises(ValueError):
+        layout.reachable_rooms(first_room_id, "attic")
+
+    with pytest.raises(ValueError):
+        layout.reachable_rooms(first_room_id, first_room_id)
+
 # Defining a Test Function to check that no two Layouts share an ID.
 def test_layout_ids_are_unique():
     assert len(LAYOUT_IDS) == len(set(LAYOUT_IDS)), "Two Layouts share an ID."

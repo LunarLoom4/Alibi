@@ -26,6 +26,36 @@ class Layout:
 
         return result
 
+    # Returns the IDs of the Rooms that a Person in the given Room can walk to without entering the avoided Room, the given Room included.
+    # After the Crime Slot, an Innocent Suspect who walked through the Crime Room would find the Body.
+    # So the Case Generator avoids the Crime Room for them (CG-18).
+    def reachable_rooms(self, room_id: str, avoided_room_id: str) -> set[str]:
+        # 1. Both Rooms belong to the House, and the walk never starts inside the avoided Room.
+        room_ids = [room.id for room in self.rooms]
+
+        if room_id not in room_ids:
+            raise ValueError(f"'{room_id}' is not a Room of Layout '{self.id}'.")
+
+        if avoided_room_id not in room_ids:
+            raise ValueError(f"The avoided Room '{avoided_room_id}' is not a Room of Layout '{self.id}'.")
+
+        if room_id == avoided_room_id:
+            raise ValueError(f"The walk cannot start in the avoided Room '{avoided_room_id}'.")
+
+        # 2. Walk through the Doors until no new Room is found, and never step into the avoided Room.
+        result = {room_id}
+        rooms_to_visit = [room_id]
+
+        while rooms_to_visit:
+            current_room_id = rooms_to_visit.pop()
+
+            for neighbor_id in self.neighbors(current_room_id):
+                if neighbor_id != avoided_room_id and neighbor_id not in result:
+                    result.add(neighbor_id)
+                    rooms_to_visit.append(neighbor_id)
+
+        return result
+
 
 # Layout with 6 Rooms, variant A:
 # a. Two rows of three Rooms, with the Living Room and the Hall at the center.
