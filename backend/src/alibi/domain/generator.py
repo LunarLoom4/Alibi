@@ -2,7 +2,7 @@ import random
 
 from .layouts import Layout, LAYOUTS
 from .parameters import count_rooms, max_red_herrings
-from .types import Crime, Suspect, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
+from .types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Picks the House of a Case: One of the Layouts with the Number of Rooms that CG-2 gives for this Number of Suspects.
@@ -181,3 +181,25 @@ def place_after_crime_slot(
         later_rooms[suspect.id] = tuple(rooms)
 
     return later_rooms
+
+
+# Builds the Timeline Grid of a Case: The Room of every Person at every Time Slot of the Night.
+# The Places at the Crime Slot come first, because they decide the solution (CG-11), and the rest of the Night is built around them.
+def build_timeline(layout: Layout, suspects: tuple[Suspect, ...], crime: Crime, rng: random.Random) -> TimelineGrid:
+    # 1. Place every Person at the Crime Slot (CG-4, CG-5, CG-6).
+    places = place_at_crime_slot(layout, suspects, crime, rng)
+
+    # 2. Walk every Person back from their Place through the Doors of the House (CG-15).
+    earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
+
+    # 3. Place every Person after the Crime Slot: The Victim stays in the Crime Room (CG-3), and no Innocent Suspect enters it (CG-18).
+    later_rooms = place_after_crime_slot(layout, suspects, places, crime, rng)
+
+    # 4. Join the three parts into one Row of Room IDs for each Person, from the first to the last Time Slot.
+    # The Rows follow the order of the IDs, the Victim first, so the order of the Rows never tells who the Murderers are.
+    locations = {}
+
+    for person_id in [VICTIM_ID] + [suspect.id for suspect in suspects]:
+        locations[person_id] = earlier_rooms[person_id] + (places[person_id],) + later_rooms[person_id]
+
+    return TimelineGrid(locations = locations)

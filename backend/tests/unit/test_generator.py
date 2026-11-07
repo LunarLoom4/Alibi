@@ -9,9 +9,10 @@ import itertools
 import alibi
 from alibi.domain.generator import pick_layout, pick_roles, pick_crime
 from alibi.domain.generator import place_at_crime_slot, place_before_crime_slot, place_after_crime_slot
+from alibi.domain.generator import build_timeline
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
-from alibi.domain.types import Crime, Suspect, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
+from alibi.domain.types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Every allowed Number of Suspects. The tests below run once for each of them.
@@ -506,7 +507,7 @@ def test_place_before_crime_slot_rejects_a_place_outside_the_house(layout: Layou
 CASE_SCRIPT = """
 import random
 
-from alibi.domain.generator import pick_crime, pick_roles, place_at_crime_slot, place_before_crime_slot, place_after_crime_slot
+from alibi.domain.generator import pick_crime, pick_roles, build_timeline
 from alibi.domain.layouts import LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers
 
@@ -517,11 +518,9 @@ for num_suspects in range(MIN_SUSPECTS, MAX_SUSPECTS + 1):
                 rng = random.Random(seed)
                 suspects = pick_roles(num_suspects, num_murderers, rng)
                 crime = pick_crime(layout, rng)
-                places = place_at_crime_slot(layout, suspects, crime, rng)
-                earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
-                later_rooms = place_after_crime_slot(layout, suspects, places, crime, rng)
+                grid = build_timeline(layout, suspects, crime, rng)
 
-                print(sorted(places.items()), sorted(earlier_rooms.items()))
+                print(sorted(grid.locations.items()))
 """
 
 # Defining a Test Function to check that the same Seed gives the same Case in every new Python process (CG-1).
@@ -748,3 +747,86 @@ def test_place_after_crime_slot_rejects_a_place_outside_the_house(layout: Layout
 
         with pytest.raises(ValueError, match = suspect.id):
             place_after_crime_slot(layout, suspects, places_outside, crime, random.Random(0))
+
+
+# Helper function to build the Roles, the Crime and the Timeline Grid of a Case from one Seed.
+def case_timeline(
+    layout: Layout,
+    num_suspects: int,
+    num_murderers: int,
+    seed: int
+) -> tuple[tuple[Suspect, ...], Crime, TimelineGrid]:
+    rng = random.Random(seed)
+    suspects = pick_roles(num_suspects, num_murderers, rng)
+    crime = pick_crime(layout, rng)
+    grid = build_timeline(layout, suspects, crime, rng)
+
+    return suspects, crime, grid
+
+# Defining a Test Function to check that each Row of the Timeline Grid is the three parts of the Night, joined in order.
+# It replays the Seed with the three steps one by one, in the same order and with the same Random Number Generator.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_timeline_joins_the_three_parts_in_order(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        suspects, crime, grid = case_timeline(layout, num_suspects, num_murderers, seed)
+
+        rng = random.Random(seed)
+        pick_roles(num_suspects, num_murderers, rng)
+        pick_crime(layout, rng)
+        places = place_at_crime_slot(layout, suspects, crime, rng)
+        earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
+        later_rooms = place_after_crime_slot(layout, suspects, places, crime, rng)
+
+        # The Rows come in the order of the IDs, the Victim first, so their order never gives away the Murderers.
+        assert list(grid.locations) == [VICTIM_ID] + [suspect.id for suspect in suspects]
+
+        for person_id, rooms in grid.locations.items():
+            assert rooms == earlier_rooms[person_id] + (places[person_id],) + later_rooms[person_id]
+
+# Defining a Test Function to check the Rules of where People can be on the whole Timeline Grid, Time Slot by Time Slot.
+# a. Up to the Crime Slot, every Person stays in their Room or goes through a Door (CG-15).
+# b. At the Crime Slot: ONLY the Victim and the Murderers are in the Crime Room (CG-4).
+#    Innocent Suspects stand in groups of 2 or more, away from every Murderer (CG-5, CG-6).
+# c. From the Crime Slot on, the Victim is in the Crime Room (CG-3), and no Innocent Suspect enters it or passes through it (CG-18).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_timeline_keeps_the_rules_of_movement(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        suspects, crime, grid = case_timeline(layout, num_suspects, num_murderers, seed)
+        murderer_ids = {suspect.id for suspect in suspects if suspect.is_murderer}
+        innocent_ids = {suspect.id for suspect in suspects if not suspect.is_murderer}
+
+        # a. The moves up to the Crime Slot.
+        for person_id in grid.locations:
+            for time_slot in range(crime.slot):
+                from_room_id = grid.room_of(person_id, time_slot)
+                to_room_id = grid.room_of(person_id, time_slot + 1)
+
+                assert to_room_id == from_room_id or to_room_id in layout.neighbors(from_room_id)
+
+        # b. The Crime Slot.
+        assert grid.roster(crime.room_id, crime.slot) == {VICTIM_ID} | murderer_ids
+
+        for innocent_id in innocent_ids:
+            roster = grid.roster(grid.room_of(innocent_id, crime.slot), crime.slot)
+
+            assert not (roster & murderer_ids), "Roster contains a murderer!"
+            assert len(roster & innocent_ids) >= 2, "Roster has fewer than 2 innocents."
+
+        # c. The Time Slots from the Crime Slot to the end of the Night.
+        for time_slot in range(crime.slot, len(TIME_SLOTS)):
+            assert grid.room_of(VICTIM_ID, time_slot) == crime.room_id
+
+        for innocent_id in innocent_ids:
+            reachable_room_ids = layout.reachable_rooms(grid.room_of(innocent_id, crime.slot), crime.room_id)
+
+            for time_slot in range(crime.slot + 1, len(TIME_SLOTS)):
+                assert grid.room_of(innocent_id, time_slot) in reachable_room_ids
+
+# Defining a Test Function to check that the same Seed always gives the same Timeline Grid in one Python process (CG-1).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg1_same_seed_gives_the_same_timeline(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        first_case = case_timeline(layout, num_suspects, num_murderers, seed)
+        second_case = case_timeline(layout, num_suspects, num_murderers, seed)
+
+        assert first_case == second_case
