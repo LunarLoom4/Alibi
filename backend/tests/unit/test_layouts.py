@@ -174,6 +174,72 @@ def test_reachable_rooms_rejects_a_bad_room(layout: Layout):
     with pytest.raises(ValueError):
         layout.reachable_rooms(first_room_id, first_room_id)
 
+# Helper function to find, by hand over the Doors, the fewest Doors from a Room to every Room.
+# It starts every other Room at R Doors, where R is the Number of Rooms: More than any fewest-Doors walk, which crosses at most R - 1 Doors.
+# Then it shortens the distances through the Doors until nothing changes.
+def distances_by_hand(layout: Layout, room_id: str) -> dict[str, int]:
+    # Starting value of len(rooms) means a 'Not Reached Yet' marker.
+    least_number_of_doors_to_reach_a_room = {room.id: len(layout.rooms) for room in layout.rooms}
+    least_number_of_doors_to_reach_a_room[room_id] = 0
+
+    found_shorter_walk = True
+    while found_shorter_walk:
+        found_shorter_walk = False
+
+        for room_a, room_b in layout.doors:
+            for from_room_id, to_room_id in [(room_a, room_b), (room_b, room_a)]:
+                # If the 'new distance' to reach Room B is less than the 'old distance' to reach Room B, then we replace the 'old distance' with the 'new distance'.
+                if least_number_of_doors_to_reach_a_room[from_room_id] + 1 < least_number_of_doors_to_reach_a_room[to_room_id]:
+                    least_number_of_doors_to_reach_a_room[to_room_id] = least_number_of_doors_to_reach_a_room[from_room_id] + 1
+                    found_shorter_walk = True
+
+    return least_number_of_doors_to_reach_a_room
+
+# Defining a Test Function to check 'distances_from' from every Room of every Layout against the Doors.
+# A Room is 0 Doors from itself, and the distance 'between' two Rooms should be the same in both the directions.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_distances_from_count_the_fewest_doors(layout: Layout):
+    for room in layout.rooms:
+        distances = layout.distances_from(room.id)
+
+        assert distances == distances_by_hand(layout, room.id)
+        assert distances[room.id] == 0
+
+        # Distance from Room 1 to Room 2 == Distance from Room 2 to Room 1.
+        for other_room in layout.rooms:
+            assert distances[other_room.id] == layout.distances_from(other_room.id)[room.id]
+
+# Defining a Test Function to check 'distances_from' on Ring Houses of 3 to 8 Rooms.
+# In a Ring House, each Room has a Door to the next one, and the last Room has a Door back to the first.
+# The Layouts above have no ring longer than 4 Rooms, so a depth-first walk, which takes the Rooms in the wrong order, can still find the fewest Doors there.
+# Room K of a ring of N Rooms is K Doors away one way round and N - K Doors the other way, so the fewest is min(K, N - K).
+# 'distances_from' reads ONLY the Doors, so the Rooms are simple 4 m x 4 m squares in a row.
+@pytest.mark.parametrize("num_rooms", range(3, 9))
+def test_distances_from_go_both_ways_round_a_ring(num_rooms: int):
+    room_ids = [f"room_{number}" for number in range(num_rooms)]
+    rooms = []
+    doors = []
+
+    for number, room_id in enumerate(room_ids):
+        rooms.append(Room(id = room_id, name = room_id, x_min = 4 * number, x_max = 4 * number + 4, y_min = 0, y_max = 4))
+        doors.append((room_id, room_ids[(number + 1) % num_rooms]))
+
+    ring_house = Layout(id = f"ring_{num_rooms}", rooms = tuple(rooms), doors = tuple(doors))
+
+    for start in range(num_rooms):
+        distances = ring_house.distances_from(room_ids[start])
+
+        for number in range(num_rooms):
+            steps = (number - start) % num_rooms
+
+            assert distances[room_ids[number]] == min(steps, num_rooms - steps)
+
+# Defining a Test Function to check that 'distances_from' rejects a Room outside the House.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_distances_from_rejects_a_room_outside_the_house(layout: Layout):
+    with pytest.raises(ValueError):
+        layout.distances_from("attic")
+
 # Defining a Test Function to check that no two Layouts share an ID.
 def test_layout_ids_are_unique():
     assert len(LAYOUT_IDS) == len(set(LAYOUT_IDS)), "Two Layouts share an ID."

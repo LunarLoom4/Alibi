@@ -56,6 +56,31 @@ class Layout:
 
         return result
 
+    # Returns the fewest Doors a Person must walk through to get from the given Room to each Room of the House.
+    # Before the Crime Slot, a Person goes through at most one Door per Time Slot (CG-15), so this is the fewest Time Slots too.
+    def distances_from(self, room_id: str) -> dict[str, int]:
+        # 1. The walk starts in a Room of the House.
+        if room_id not in [room.id for room in self.rooms]:
+            raise ValueError(f"'{room_id}' is not a Room of Layout '{self.id}'.")
+
+        # 2. Walk out ring by ring: Every Room behind a Door of the last ring, and not found before, is one Door further away.
+        # The Neighbors are sorted, so the Rooms come back in the same order in every Python process (CG-1).
+        distances = {room_id: 0}
+        last_ring = [room_id]
+
+        while last_ring:
+            next_ring = []
+
+            for ring_room_id in last_ring:
+                for neighbor_id in sorted(self.neighbors(ring_room_id)):
+                    if neighbor_id not in distances:
+                        distances[neighbor_id] = distances[ring_room_id] + 1
+                        next_ring.append(neighbor_id)
+
+            last_ring = next_ring
+
+        return distances
+
 
 # Layout with 6 Rooms, variant A:
 # a. Two rows of three Rooms, with the Living Room and the Hall at the center.
