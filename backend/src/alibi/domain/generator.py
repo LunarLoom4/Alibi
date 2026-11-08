@@ -135,11 +135,13 @@ def pick_sighting(
 
 # Places every Person at each Time Slot before the Crime Slot, and returns the Rooms of each Person ID from Time Slot 0 to the one just before the Crime Slot.
 # It walks back in time from the Places at the Crime Slot, so every Person reaches their Place through the Doors of the House (CG-15).
+# With a Sighting, the Victim and the Witness are both in the Sighting Room at the Sighting Time Slot (CG-16).
 def place_before_crime_slot(
     layout: Layout,
     places: dict[str, str],
     crime: Crime,
-    rng: random.Random
+    rng: random.Random,
+    sighting: Sighting | None = None
 ) -> dict[str, tuple[str, ...]]:
     # 1. A Place outside the House has no Doors to walk through, so it is rejected.
     room_ids = [room.id for room in layout.rooms]
@@ -148,7 +150,35 @@ def place_before_crime_slot(
         if room_id not in room_ids:
             raise ValueError(f"'{person_id}' is in the Room '{room_id}', which is not a Room of Layout '{layout.id}'.")
 
-    # 2. Walk every Person back one Time Slot at a time: Each step stays in the Room or goes through one of its Doors (CG-15).
+    # 2. A Sighting must be possible. Without a Sighting, nobody walks to one.
+    meeting_ids = []
+    distance_from_sighting_room = {}
+    sighting_slot = 0
+
+    if sighting is not None:
+        # The Witness must be a Suspect, not the VICTIM themselves.
+        if sighting.witness_id == VICTIM_ID:
+            raise ValueError(f"The VICTIM themselves cannot be a Witness.")
+
+        # The Witness must have a Place at the Crime Slot.
+        if sighting.witness_id not in places:
+            raise ValueError(f"The Witness '{sighting.witness_id}' has no Place at the Crime Slot.")
+
+        # The Victim is seen alive ONLY before the Crime Slot (CG-16).
+        if sighting.time_slot < 0 or sighting.time_slot >= crime.slot:
+            raise ValueError(f"The Sighting Time Slot must be from 0 to {crime.slot - 1}, not {sighting.time_slot}.")
+
+        meeting_ids = [VICTIM_ID, sighting.witness_id]
+        distance_from_sighting_room = layout.distances_from(sighting.room_id)
+        sighting_slot = sighting.time_slot
+        slots_to_sighting = crime.slot - sighting_slot
+
+        # Both of them must be able to walk from the Sighting to their Places in time.
+        for person_id in meeting_ids:
+            if distance_from_sighting_room[places[person_id]] > slots_to_sighting:
+                raise ValueError(f"'{person_id}' cannot reach the Sighting in the Room '{sighting.room_id}' in time.")
+
+    # 3. Walk every Person back one Time Slot at a time: Each step stays in the Room or goes through one of its Doors (CG-15).
     # The Neighbors of a Room are sorted, because the order of a 'set' of strings changes between Python processes since sets don't have an iteration order.
     # Without the sorting, the same Seed could give another Case on another run (CG-1).
     earlier_rooms = {}
@@ -156,11 +186,17 @@ def place_before_crime_slot(
     for person_id, room_id in places.items():
         walk = [room_id]
 
-        for _ in range(crime.slot):
+        for time_slot in reversed(range(crime.slot)):
             choices = [walk[-1]] + sorted(layout.neighbors(walk[-1]))
+
+            # The Victim and the Witness keep ONLY the Rooms from which they can still reach the Sighting in time. The remaining Suspects get allotted a Room at random.
+            if person_id in meeting_ids and time_slot >= sighting_slot:
+                slots_left = time_slot - sighting_slot
+                choices = [choice for choice in choices if distance_from_sighting_room[choice] <= slots_left]
+
             walk.append(rng.choice(choices))
 
-        # 3. The walk runs backward in time, so reverse it, and leave out the Place at the Crime Slot.
+        # 4. The walk runs backward in time, so reverse it, and leave out the Place at the Crime Slot.
         earlier_rooms[person_id] = tuple(reversed(walk[1:]))
 
     return earlier_rooms
@@ -199,14 +235,12 @@ def place_after_crime_slot(
     for suspect in suspects:
         if suspect.is_murderer:
             allowed_room_ids = room_ids
-
         else:
             reachable_room_ids = layout.reachable_rooms(places[suspect.id], crime.room_id)
             allowed_room_ids = [room_id for room_id in room_ids if room_id in reachable_room_ids]
 
         # 4. Draw one of those Rooms for each Time Slot after the Crime Slot.
         rooms = []
-
         for _ in range(num_later_slots):
             rooms.append(rng.choice(allowed_room_ids))
 

@@ -966,3 +966,93 @@ def test_cg1_same_seed_picks_the_same_sighting(layout: Layout, num_suspects: int
         second_case = case_sighting(layout, num_suspects, num_murderers, seed)
 
         assert first_case == second_case
+
+
+# Helper function to build the Case up to the Crime Slot from one Seed, pick its Sighting, and then walk every Person back to it.
+def case_before_sighting(
+    layout: Layout,
+    num_suspects: int,
+    num_murderers: int,
+    seed: int
+) -> tuple[Crime, dict[str, str], Sighting | None, dict[str, tuple[str, ...]]]:
+    rng = random.Random(seed)
+    suspects = pick_roles(num_suspects, num_murderers, rng)
+    crime = pick_crime(layout, rng)
+    places = place_at_crime_slot(layout, suspects, crime, rng)
+    sighting = pick_sighting(layout, suspects, places, crime, rng)
+    earlier_rooms = place_before_crime_slot(layout, places, crime, rng, sighting)
+
+    return crime, places, sighting, earlier_rooms
+
+# Defining a Test Function to check that the Victim and the Witness are both in the Sighting Room at the Sighting Time Slot (CG-16).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg16_victim_and_witness_meet_at_the_sighting(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        crime, places, sighting, earlier_rooms = case_before_sighting(layout, num_suspects, num_murderers, seed)
+
+        if sighting is not None:
+            assert earlier_rooms[VICTIM_ID][sighting.time_slot] == sighting.room_id
+            assert earlier_rooms[sighting.witness_id][sighting.time_slot] == sighting.room_id
+
+# Defining a Test Function to check that, with a Sighting, every Person still walks through the Doors up to the Crime Slot (CG-15).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg15_walks_to_the_sighting_use_the_doors(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        crime, places, sighting, earlier_rooms = case_before_sighting(layout, num_suspects, num_murderers, seed)
+
+        for person_id, rooms in earlier_rooms.items():
+            walk = rooms + (places[person_id],)
+
+            assert len(rooms) == crime.slot
+
+            for time_slot in range(crime.slot):
+                assert walk[time_slot + 1] == walk[time_slot] or walk[time_slot + 1] in layout.neighbors(walk[time_slot])
+
+# Defining a Test Function to check that the same Seed always gives the same Sighting and the same walks to it (CG-1).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg1_same_seed_gives_the_same_walks_to_the_sighting(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        first_case = case_before_sighting(layout, num_suspects, num_murderers, seed)
+        second_case = case_before_sighting(layout, num_suspects, num_murderers, seed)
+
+        assert first_case == second_case
+
+# Defining a Test Function to check that a Sighting that cannot happen in this Case is rejected.
+# a. A Witness who is the Victim or has no Place, and a Sighting before the Night or at the Crime Slot.
+# b. A Sighting Room too far for the Witness, or too far for the Victim, at the Crime Slot 1.
+@pytest.mark.parametrize("layout, crime_room_id", CRIME_ROOM_CASES)
+def test_place_before_crime_slot_rejects_an_impossible_sighting(layout: Layout, crime_room_id: str):
+    suspects, crime, places = every_room_at_crime_slot_1(layout, crime_room_id)
+    innocent_ids = [suspect.id for suspect in suspects if not suspect.is_murderer]
+
+    unknown_witness = Sighting(witness_id = "suspect_99", time_slot = 0, room_id = crime_room_id)
+    victim_as_witness = Sighting(witness_id = VICTIM_ID, time_slot = 0, room_id = crime_room_id)
+
+    # The Murderer is in the Crime Room with the Victim, so ONLY the Time Slot of these two Sightings is wrong.
+    before_the_night = Sighting(witness_id = "murderer", time_slot = -1, room_id = crime_room_id)
+    at_the_crime_slot = Sighting(witness_id = "murderer", time_slot = crime.slot, room_id = crime_room_id)
+
+    for impossible_sighting in [unknown_witness, victim_as_witness, before_the_night, at_the_crime_slot]:
+        with pytest.raises(ValueError):
+            place_before_crime_slot(layout, places, crime, random.Random(0), impossible_sighting)
+
+    # The Victim waits in the Crime Room, so a Sighting in the Place of an Innocent Suspect far from it is too far for the Victim.
+    distance_from_crime_room = layout.distances_from(crime_room_id)
+
+    for innocent_id in innocent_ids:
+        if distance_from_crime_room[places[innocent_id]] > 1:
+            too_far_for_the_victim = Sighting(witness_id = innocent_id, time_slot = 0, room_id = places[innocent_id])
+
+            with pytest.raises(ValueError):
+                place_before_crime_slot(layout, places, crime, random.Random(0), too_far_for_the_victim)
+
+    # The Witness waits in their Place, so a Room two or more Doors from it is too far for the Witness.
+    for innocent_id in innocent_ids:
+        distance_from_place = layout.distances_from(places[innocent_id])
+
+        for room in layout.rooms:
+            if distance_from_place[room.id] > 1:
+                too_far_for_the_witness = Sighting(witness_id = innocent_id, time_slot = 0, room_id = room.id)
+
+                with pytest.raises(ValueError):
+                    place_before_crime_slot(layout, places, crime, random.Random(0), too_far_for_the_witness)
