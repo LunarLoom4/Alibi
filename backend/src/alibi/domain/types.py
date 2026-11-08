@@ -133,3 +133,26 @@ class Sighting:
     witness_id: str
     time_slot: int
     room_id: str
+
+
+# Defining the Hidden Fact of a Red Herring: The Room where they really were at one Time Slot, and the Room they claim instead (CG-10, LI-4).
+@dataclass(frozen = True)
+class HiddenFact:
+    red_herring_id: str
+    time_slot: int
+    room_id: str
+    claimed_room_id: str
+
+    # Reject a Hidden Fact that can never happen.
+    def __post_init__(self):
+        # 1. A Red Herring is a Suspect, never the Victim.
+        if self.red_herring_id == VICTIM_ID:
+            raise ValueError("The Victim cannot have a Hidden Fact.")
+
+        # 2. The Time Slot is a Time Slot of the Night.
+        if self.time_slot < 0 or self.time_slot >= len(TIME_SLOTS):
+            raise ValueError(f"Time Slot {self.time_slot} does not exist. Time Slots go from 0 to {len(TIME_SLOTS) - 1}.")
+
+        # 3. The claimed Room has to be a different Room from the true one, or it would NOT be a lie.
+        if self.claimed_room_id == self.room_id:
+            raise ValueError(f"The claimed Room '{self.claimed_room_id}' is the true Room, so it is not a lie.")

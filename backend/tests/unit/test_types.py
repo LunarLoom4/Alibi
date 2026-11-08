@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms
-from alibi.domain.types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
+from alibi.domain.types import Crime, HiddenFact, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Every Role that a Suspect can be given, whether the Rules allow it or not.
@@ -246,3 +246,32 @@ def test_cg13_window_is_consecutive_slots(window: tuple):
 def test_crime_rejects_a_window_that_is_not_a_tuple():
     with pytest.raises(TypeError):
         Crime(slot = 1, room_id = "hall", window = list(GOOD_WINDOW))
+
+
+# Defining a Test Function to check that a Hidden Fact keeps its values at every Time Slot of the Night, and never changes.
+@pytest.mark.parametrize("time_slot", range(len(TIME_SLOTS)))
+def test_hidden_fact_keeps_its_values(time_slot: int):
+    hidden_fact = HiddenFact(red_herring_id = "suspect_1", time_slot = time_slot, room_id = "study", claimed_room_id = "library")
+
+    assert hidden_fact.red_herring_id == "suspect_1"
+    assert hidden_fact.time_slot == time_slot
+    assert hidden_fact.room_id == "study"
+    assert hidden_fact.claimed_room_id == "library"
+
+    # A frozen Hidden Fact never changes during the Game.
+    with pytest.raises(FrozenInstanceError):
+        hidden_fact.room_id = "library"
+
+# Every way a Hidden Fact can break the Rules: (Red Herring ID, Time Slot, true Room ID, claimed Room ID).
+BAD_HIDDEN_FACTS = [
+    pytest.param(VICTIM_ID,   0,               "study", "library", id = "The Victim"),
+    pytest.param("suspect_1", -1,              "study", "library", id = "Before the Night"),
+    pytest.param("suspect_1", len(TIME_SLOTS), "study", "library", id = "After the Night"),
+    pytest.param("suspect_1", 0,               "study", "study",   id = "The claimed Room is the true Room"),
+]
+
+# Defining a Test Function to check that a Hidden Fact that can never happen is rejected.
+@pytest.mark.parametrize("red_herring_id, time_slot, room_id, claimed_room_id", BAD_HIDDEN_FACTS)
+def test_hidden_fact_rejects_what_can_never_happen(red_herring_id: str, time_slot: int, room_id: str, claimed_room_id: str):
+    with pytest.raises(ValueError):
+        HiddenFact(red_herring_id = red_herring_id, time_slot = time_slot, room_id = room_id, claimed_room_id = claimed_room_id)
