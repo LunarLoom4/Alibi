@@ -7,9 +7,12 @@ import pytest
 import itertools
 
 import alibi
+from alibi.domain import generator
 from alibi.domain.generator import pick_layout, pick_roles, pick_crime
 from alibi.domain.generator import place_at_crime_slot, place_before_crime_slot, place_after_crime_slot
 from alibi.domain.generator import build_timeline, find_witnesses, pick_sighting
+from alibi.domain.generator import generate_case, MAX_SEEDS_PER_CASE
+
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
 from alibi.domain.types import Crime, Sighting, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
@@ -1092,3 +1095,107 @@ def test_cg16_every_timeline_has_a_witness(layout: Layout, num_suspects: int, nu
             assert find_witnesses(grid, suspects, crime) != {}
 
     assert num_rejected <= len(SEEDS) // 4, f"{num_rejected} of {len(SEEDS)} Seeds were rejected."
+
+
+# Defining a Test Function to check that every Crime Room has late Crime Slots at which no Case is ever rejected (CG-16).
+# The farthest Room is D Doors from the Crime Room. By the Crime Slot C, the Victim and a Witness can close 2 x C Doors between them.
+# So from the Crime Slot ceil(D / 2) on, any Innocent Suspect can meet the Victim, and the last Crime Slot of the Night must be one of them.
+@pytest.mark.parametrize("layout, crime_room_id", CRIME_ROOM_CASES)
+def test_cg16_late_crime_slots_always_have_a_sighting(layout: Layout, crime_room_id: str):
+    farthest_distance = max(layout.distances_from(crime_room_id).values())
+    first_safe_slot = math.ceil(farthest_distance / 2)
+
+    assert first_safe_slot <= len(TIME_SLOTS) - 1, \
+        f"A Room of Layout '{layout.id}' is {farthest_distance} Doors from the Crime Room, too far for the Night."
+
+    murderer = Suspect(id = "murderer", is_murderer = True, is_red_herring = False)
+    innocent = Suspect(id = "innocent", is_murderer = False, is_red_herring = False)
+
+    for crime_slot in range(first_safe_slot, len(TIME_SLOTS)):
+        crime = Crime(slot = crime_slot, room_id = crime_room_id, window = ALLOWED_WINDOWS[crime_slot][0])
+
+        # The Innocent Suspect stands in each Room but the Crime Room in turn, so the farthest Room is tried too.
+        for room in layout.rooms:
+            if room.id != crime_room_id:
+                places = {VICTIM_ID: crime_room_id, murderer.id: crime_room_id, innocent.id: room.id}
+
+                assert pick_sighting(layout, (murderer, innocent), places, crime, random.Random(0)) is not None
+
+# Defining a Test Function to check that an early Crime has no Sighting when every Innocent Suspect stands too far away (CG-16).
+# At the Crime Slot 1, a Witness more than 2 Doors from the Crime Room cannot meet the Victim in time, so the Case is rejected.
+@pytest.mark.parametrize("layout, crime_room_id", CRIME_ROOM_CASES)
+def test_cg16_an_early_crime_far_from_everyone_has_no_sighting(layout: Layout, crime_room_id: str):
+    distance_from_crime_room = layout.distances_from(crime_room_id)
+    murderer = Suspect(id = "murderer", is_murderer = True, is_red_herring = False)
+    suspects = [murderer]
+    places = {VICTIM_ID: crime_room_id, murderer.id: crime_room_id}
+    crime = Crime(slot = 1, room_id = crime_room_id, window = ALLOWED_WINDOWS[1][0])
+
+    # One Innocent Suspect in every Room more than 2 Doors from the Crime Room.
+    for room in layout.rooms:
+        if distance_from_crime_room[room.id] > 2:
+            innocent = Suspect(id = f"innocent_in_{room.id}", is_murderer = False, is_red_herring = False)
+            suspects.append(innocent)
+            places[innocent.id] = room.id
+
+    assert pick_sighting(layout, tuple(suspects), places, crime, random.Random(0)) is None
+
+
+# Helper function to build the Case of one Seed step by step, the same way 'generate_case' does. The Grid is None for a rejected Seed.
+def case_of_seed(
+    num_suspects: int,
+    num_murderers: int,
+    seed: int
+) -> tuple[Layout, tuple[Suspect, ...], Crime, TimelineGrid | None]:
+    rng = random.Random(seed)
+    layout = pick_layout(num_suspects, rng)
+    suspects = pick_roles(num_suspects, num_murderers, rng)
+    crime = pick_crime(layout, rng)
+    grid = build_timeline(layout, suspects, crime, rng)
+
+    return layout, suspects, crime, grid
+
+# Defining a Test Function to check that 'generate_case' returns the Case of the first Seed that is not rejected (CG-1, CG-12).
+# Every Seed before it, from 'first_seed' on, must be rejected, and the Case must be exactly the Case of its own Seed.
+@pytest.mark.parametrize("num_suspects, num_murderers", ROLE_COUNTS)
+def test_cg12_generate_case_takes_the_first_accepted_seed(num_suspects: int, num_murderers: int):
+    for first_seed in SEEDS:
+        case = generate_case(num_suspects, num_murderers, first_seed)
+
+        assert case is not None
+        assert case.grid is not None
+        assert first_seed <= case.seed < first_seed + MAX_SEEDS_PER_CASE
+
+        for seed in range(first_seed, case.seed):
+            layout, suspects, crime, grid = case_of_seed(num_suspects, num_murderers, seed)
+
+            assert grid is None
+
+        assert case_of_seed(num_suspects, num_murderers, case.seed) == (case.layout, case.suspects, case.crime, case.grid)
+
+# Defining a Test Function to check that 'generate_case' tries MAX_SEEDS_PER_CASE Seeds, and then gives up (CG-12).
+# For this test ONLY, 'monkeypatch' swaps 'build_timeline' for a stand-in that rejects every Case and counts its calls.
+@pytest.mark.parametrize("num_suspects, num_murderers", ROLE_COUNTS)
+def test_cg12_generate_case_gives_up_after_the_last_seed(monkeypatch, num_suspects: int, num_murderers: int):
+    rejected_crimes = []
+
+    # A stand-in for 'build_timeline' that rejects every Case.
+    def reject_every_case(layout: Layout, suspects: tuple[Suspect, ...], crime: Crime, rng: random.Random) -> None:
+        rejected_crimes.append(crime)
+
+        return None
+
+    monkeypatch.setattr(generator, "build_timeline", reject_every_case)
+
+    assert generate_case(num_suspects, num_murderers, 0) is None
+    assert len(rejected_crimes) == MAX_SEEDS_PER_CASE
+
+# Defining a Test Function to check that the Case Generator tries at most 200 Seeds for one Case, as CG-12 says.
+def test_cg12_max_seeds_matches_the_spec():
+    assert MAX_SEEDS_PER_CASE == 200
+
+# Defining a Test Function to check that 'generate_case' rejects a negative first Seed.
+@pytest.mark.parametrize("num_suspects, num_murderers", ROLE_COUNTS)
+def test_generate_case_rejects_a_negative_seed(num_suspects: int, num_murderers: int):
+    with pytest.raises(ValueError):
+        generate_case(num_suspects, num_murderers, -1)

@@ -1,4 +1,5 @@
 import random
+from dataclasses import dataclass
 
 from .layouts import Layout, LAYOUTS
 from .parameters import count_rooms, max_red_herrings
@@ -297,3 +298,38 @@ def find_witnesses(grid: TimelineGrid, suspects: tuple[Suspect, ...], crime: Cri
                 witnesses[suspect.id] = tuple(sighting_slots)
 
     return witnesses
+
+
+# Highest Number of Seeds the Case Generator tries for one Case before it gives up (CG-12).
+MAX_SEEDS_PER_CASE = 200
+
+
+# Defining a Case: The Seed it was built from, its House, its Suspects, its Crime, and its Timeline Grid.
+@dataclass(frozen = True)
+class Case:
+    seed: int
+    layout: Layout
+    suspects: tuple[Suspect, ...]
+    crime: Crime
+    grid: TimelineGrid
+
+
+# Generates a Case from the first Seed that gives one, trying the Seeds one by one from 'first_seed' on (CG-1, CG-12).
+# A Seed is skipped when its Case is rejected, because no Innocent Suspect can see the Victim alive (CG-16).
+# Returns None when all MAX_SEEDS_PER_CASE Seeds are rejected.
+def generate_case(num_suspects: int, num_murderers: int, first_seed: int) -> Case | None:
+    # A negative Seed gives the same Random Numbers as the positive one, so it would record a wrong Seed.
+    if first_seed < 0:
+        raise ValueError(f"The first Seed must be 0 or more, not {first_seed}.")
+
+    for seed in range(first_seed, first_seed + MAX_SEEDS_PER_CASE):
+        rng = random.Random(seed)
+        layout = pick_layout(num_suspects, rng)
+        suspects = pick_roles(num_suspects, num_murderers, rng)
+        crime = pick_crime(layout, rng)
+        grid = build_timeline(layout, suspects, crime, rng)
+
+        if grid is not None:
+            return Case(seed = seed, layout = layout, suspects = suspects, crime = crime, grid = grid)
+
+    return None
