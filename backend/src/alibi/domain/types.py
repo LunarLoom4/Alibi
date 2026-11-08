@@ -125,3 +125,11 @@ class Crime:
         # 4. The Crime Slot is one of the Time Slots of the Window (CG-13).
         if self.slot not in self.window:
             raise ValueError(f"The Crime Slot {self.slot} is not in the Time-of-death Window {self.window}.")
+
+
+# Defining a Sighting: An Innocent Suspect, the Witness, sees the Victim alive in a Room at a Time Slot before the Crime Slot (CG-16).
+@dataclass(frozen = True)
+class Sighting:
+    witness_id: str
+    time_slot: int
+    room_id: str

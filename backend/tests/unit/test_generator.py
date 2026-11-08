@@ -9,10 +9,10 @@ import itertools
 import alibi
 from alibi.domain.generator import pick_layout, pick_roles, pick_crime
 from alibi.domain.generator import place_at_crime_slot, place_before_crime_slot, place_after_crime_slot
-from alibi.domain.generator import build_timeline, find_witnesses
+from alibi.domain.generator import build_timeline, find_witnesses, pick_sighting
 from alibi.domain.layouts import Layout, LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers, max_red_herrings
-from alibi.domain.types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
+from alibi.domain.types import Crime, Sighting, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Every allowed Number of Suspects. The tests below run once for each of them.
@@ -881,3 +881,88 @@ def test_cg16_witnesses_saw_the_victim_before_the_crime_slot(crime_slot: int, si
         assert find_witnesses(grid, (murderer, innocent), crime) == {innocent.id: (sighting_slot,)}
     else:
         assert find_witnesses(grid, (murderer, innocent), crime) == {}
+
+
+# Helper function to build the Case up to the Crime Slot from one Seed, and then pick its Sighting.
+def case_sighting(
+    layout: Layout,
+    num_suspects: int,
+    num_murderers: int,
+    seed: int
+) -> tuple[tuple[Suspect, ...], Crime, dict[str, str], Sighting | None]:
+    rng = random.Random(seed)
+    suspects = pick_roles(num_suspects, num_murderers, rng)
+    crime = pick_crime(layout, rng)
+    places = place_at_crime_slot(layout, suspects, crime, rng)
+    sighting = pick_sighting(layout, suspects, places, crime, rng)
+
+    return suspects, crime, places, sighting
+
+# Defining a Test Function to check that a picked Sighting can really happen (CG-15, CG-16).
+# The Witness is an Innocent Suspect, the Sighting is before the Crime Slot, and both the Victim and the Witness reach their Places in time.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg16_sighting_can_happen_in_time(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        suspects, crime, places, sighting = case_sighting(layout, num_suspects, num_murderers, seed)
+
+        if sighting is not None:
+            innocent_ids = {suspect.id for suspect in suspects if not suspect.is_murderer}
+            slots_left = crime.slot - sighting.time_slot
+
+            assert sighting.witness_id in innocent_ids
+            assert 0 <= sighting.time_slot < crime.slot
+
+            # Asserts that the distances from the Sighting Room to the Crime Room and the Suspect's Crime Slot Room is <= Remaining Time.
+            assert layout.distances_from(sighting.room_id)[crime.room_id] <= slots_left
+            assert layout.distances_from(sighting.room_id)[places[sighting.witness_id]] <= slots_left
+
+# Defining a Test Function to check that a Sighting is missing ONLY when no Innocent Suspect can meet the Victim in time (CG-16).
+# Two People can meet before the Crime Slot exactly when their Places are at most (2 x Crime Slot) Doors apart.
+# Each of them walks back at most one Door per Time Slot, so they can close that gap from both sides.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg16_sighting_is_missing_only_when_no_one_can_meet_the_victim(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        suspects, crime, places, sighting = case_sighting(layout, num_suspects, num_murderers, seed)
+        distance_from_crime_room = layout.distances_from(crime.room_id)
+
+        someone_can_meet = False
+        for suspect in suspects:
+            if not suspect.is_murderer and distance_from_crime_room[places[suspect.id]] <= 2 * crime.slot:
+                someone_can_meet = True
+                break
+
+        assert (sighting is not None) == someone_can_meet
+
+# Defining a Test Function to check that, over the Seeds, every possible Sighting can be picked.
+# Every Room but the Crime Room holds one Innocent Suspect at the Crime Slot 1, so every Sighting is at Time Slot 0, with the same chance.
+@pytest.mark.parametrize("layout, crime_room_id", CRIME_ROOM_CASES)
+def test_cg16_sightings_cover_every_meeting(layout: Layout, crime_room_id: str):
+    suspects, crime, places = every_room_at_crime_slot_1(layout, crime_room_id)
+
+    all_sightings = set()
+    picked_sightings = set()
+
+    # A meeting at Time Slot 0 leaves one Time Slot, so the Room must be at most one Door from both Places.
+    for suspect in suspects:
+        if not suspect.is_murderer:
+            for room in layout.rooms:
+                near_crime_room = room.id == crime_room_id or room.id in layout.neighbors(crime_room_id)
+                near_place = room.id == places[suspect.id] or room.id in layout.neighbors(places[suspect.id])
+
+                if near_crime_room and near_place:
+                    all_sightings.add(Sighting(witness_id = suspect.id, time_slot = 0, room_id = room.id))
+
+    # One Sighting is picked from all of them, each with the chance 1 / (Number of possible Sightings).
+    for seed in seeds_for_coverage(len(all_sightings), 1 / len(all_sightings)):
+        picked_sightings.add(pick_sighting(layout, suspects, places, crime, random.Random(seed)))
+
+    assert picked_sightings == all_sightings
+
+# Defining a Test Function to check that the same Seed always picks the same Sighting (CG-1).
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg1_same_seed_picks_the_same_sighting(layout: Layout, num_suspects: int, num_murderers: int):
+    for seed in SEEDS:
+        first_case = case_sighting(layout, num_suspects, num_murderers, seed)
+        second_case = case_sighting(layout, num_suspects, num_murderers, seed)
+
+        assert first_case == second_case

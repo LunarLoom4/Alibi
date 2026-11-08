@@ -2,7 +2,7 @@ import random
 
 from .layouts import Layout, LAYOUTS
 from .parameters import count_rooms, max_red_herrings
-from .types import Crime, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
+from .types import Crime, Sighting, Suspect, TimelineGrid, TIME_SLOTS, VICTIM_ID, WINDOW_LENGTH
 
 
 # Picks the House of a Case: One of the Layouts with the Number of Rooms that CG-2 gives for this Number of Suspects.
@@ -99,6 +99,38 @@ def place_at_crime_slot(layout: Layout, suspects: tuple[Suspect, ...], crime: Cr
         places[innocent_id] = rng.choice(group_room_ids)
 
     return places
+
+
+# Picks the Sighting of a Case: An Innocent Suspect meets the Victim in a Room at a Time Slot before the Crime Slot (CG-16).
+# After the meeting, both of them must still reach their Places at the Crime Slot, through one Door at most per Time Slot (CG-15).
+# Returns None when no Innocent Suspect can meet the Victim in time, because then the Case cannot keep CG-16.
+def pick_sighting(
+    layout: Layout,
+    suspects: tuple[Suspect, ...],
+    places: dict[str, str],
+    crime: Crime,
+    rng: random.Random
+) -> Sighting | None:
+    distance_from_crime_room = layout.distances_from(crime.room_id)
+    possible_sightings = []
+
+    for suspect in suspects:
+        if not suspect.is_murderer:
+            distance_from_suspect_room = layout.distances_from(places[suspect.id])
+
+            for time_slot in range(crime.slot):
+                slots_left = crime.slot - time_slot
+
+                # The Victim must reach the Crime Room, and the Witness their Place, within the Time Slots left.
+                for room in layout.rooms:
+                    # Choose a Room whose distance from the Crime Room and the Innocent's Crime Slot Room can be covered in remaining time.
+                    if distance_from_crime_room[room.id] <= slots_left and distance_from_suspect_room[room.id] <= slots_left:
+                        possible_sightings.append(Sighting(witness_id = suspect.id, time_slot = time_slot, room_id = room.id))
+
+    if not possible_sightings:
+        return None
+
+    return rng.choice(possible_sightings)
 
 
 # Places every Person at each Time Slot before the Crime Slot, and returns the Rooms of each Person ID from Time Slot 0 to the one just before the Crime Slot.
