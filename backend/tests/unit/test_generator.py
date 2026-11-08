@@ -77,12 +77,6 @@ def test_cg2_every_layout_can_be_picked(num_suspects: int):
 
     assert picked_ids == layout_ids
 
-# Defining a Test Function to check that the same Seed always picks the same House (CG-1).
-@pytest.mark.parametrize("num_suspects", SUSPECT_COUNTS)
-def test_cg1_same_seed_picks_the_same_layout(num_suspects: int):
-    for seed in SEEDS:
-        assert pick_layout(num_suspects, random.Random(seed)) == pick_layout(num_suspects, random.Random(seed))
-
 # Defining a Test Function to check that a Number of Suspects outside 5 to 10 is rejected.
 @pytest.mark.parametrize("num_suspects", [MIN_SUSPECTS - 1, MAX_SUSPECTS + 1])
 def test_pick_layout_rejects_a_disallowed_number_of_suspects(num_suspects: int):
@@ -146,15 +140,6 @@ def test_roles_cover_every_choice(num_suspects: int, num_murderers: int):
     assert murderer_ids == all_ids
     assert red_herring_ids == all_ids
     assert red_herring_counts == set(range(1, maximum_red_herrings + 1))
-
-# Defining a Test Function to check that the same Seed always gives the same Roles (CG-1).
-@pytest.mark.parametrize("num_suspects, num_murderers", ROLE_COUNTS)
-def test_cg1_same_seed_gives_the_same_roles(num_suspects: int, num_murderers: int):
-    for seed in SEEDS:
-        first_roles = pick_roles(num_suspects, num_murderers, random.Random(seed))
-        second_roles = pick_roles(num_suspects, num_murderers, random.Random(seed))
-
-        assert first_roles == second_roles
 
 # Defining a Test Function to check that, for every Number of Suspects, 0 Murderers and one more than the largest Number are rejected.
 @pytest.mark.parametrize("num_suspects", SUSPECT_COUNTS)
@@ -240,12 +225,6 @@ def test_cg13_crime_covers_every_choice(layout: Layout):
 
     assert picked_room_ids == all_room_ids
     assert picked_windows == all_windows
-
-# Defining a Test Function to check that the same Seed always picks the same Crime (CG-1).
-@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
-def test_cg1_same_seed_picks_the_same_crime(layout: Layout):
-    for seed in SEEDS:
-        assert pick_crime(layout, random.Random(seed)) == pick_crime(layout, random.Random(seed))
 
 
 # Helper function to build the Case up to the Crime Slot from one Seed: The Roles, then the Crime, then the Places.
@@ -386,15 +365,6 @@ def test_placement_mixes_the_groups(layout: Layout, num_suspects: int, num_murde
     if num_innocents >= 6:
         assert saw_two_big_groups
 
-# Defining a Test Function to check that the same Seed always places every Person in the same Room (CG-1).
-@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
-def test_cg1_same_seed_gives_the_same_places(layout: Layout, num_suspects: int, num_murderers: int):
-    for seed in SEEDS:
-        first_case = case_at_crime_slot(layout, num_suspects, num_murderers, seed)
-        second_case = case_at_crime_slot(layout, num_suspects, num_murderers, seed)
-
-        assert first_case == second_case
-
 # Defining a Test Function to check that a Crime Room outside the House is rejected.
 @pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
 def test_place_at_crime_slot_rejects_a_crime_room_outside_the_house(layout: Layout):
@@ -485,15 +455,6 @@ def test_moves_before_the_crime_slot_cover_every_door(layout: Layout):
 
     assert picked_moves == all_moves
 
-# Defining a Test Function to check that the same Seed always gives every Person the same Rooms before the Crime Slot (CG-1).
-@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
-def test_cg1_same_seed_gives_the_same_rooms_before_the_crime_slot(layout: Layout, num_suspects: int, num_murderers: int):
-    for seed in SEEDS:
-        first_case = case_before_crime_slot(layout, num_suspects, num_murderers, seed)
-        second_case = case_before_crime_slot(layout, num_suspects, num_murderers, seed)
-
-        assert first_case == second_case
-
 # Defining a Test Function to check that a Place outside the House is rejected.
 @pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = ALL_LAYOUT_IDS)
 def test_place_before_crime_slot_rejects_a_place_outside_the_house(layout: Layout):
@@ -504,24 +465,34 @@ def test_place_before_crime_slot_rejects_a_place_outside_the_house(layout: Layou
         place_before_crime_slot(layout, places, crime, random.Random(0))
 
 
-# Python code that a new Python process runs: It prints the Places and the Rooms before and after the Crime Slot.
+# Python code that a new Python process runs: It prints the picked Houses, and the Roles, the Crime and the Timeline Grid of a few Seeds.
 # It does so for every allowed (Layout, Suspects, Murderers).
+# It also prints the walks back from the Crime Slot without a Sighting, because 'build_timeline' always passes a Sighting.
 # A few Seeds are enough, because a choice that follows the order of a set changes the Case within the first few of them.
 CASE_SCRIPT = """
 import random
 
-from alibi.domain.generator import pick_crime, pick_roles, build_timeline
+from alibi.domain.generator import pick_layout, pick_crime, pick_roles, build_timeline
+from alibi.domain.generator import place_at_crime_slot, place_before_crime_slot
 from alibi.domain.layouts import LAYOUTS
 from alibi.domain.parameters import MIN_SUSPECTS, MAX_SUSPECTS, count_rooms, max_murderers
 
 for num_suspects in range(MIN_SUSPECTS, MAX_SUSPECTS + 1):
+    for seed in range(20):
+        print(pick_layout(num_suspects, random.Random(seed)).id)
+
     for num_murderers in range(1, max_murderers(num_suspects) + 1):
         for layout in LAYOUTS[count_rooms(num_suspects)]:
-            for seed in range(10):
+            for seed in range(20):
                 rng = random.Random(seed)
                 suspects = pick_roles(num_suspects, num_murderers, rng)
                 crime = pick_crime(layout, rng)
                 grid = build_timeline(layout, suspects, crime, rng)
+
+                print(suspects, crime)
+
+                places = place_at_crime_slot(layout, suspects, crime, random.Random(seed))
+                print(sorted(place_before_crime_slot(layout, places, crime, random.Random(seed)).items()))
 
                 if grid is None:
                     print("Rejected")
@@ -717,15 +688,6 @@ def test_cg19_murderers_can_split_up_after_the_crime_slot(layout: Layout, crime_
     assert saw_together
     assert saw_apart
 
-# Defining a Test Function to check that the same Seed always gives every Person the same Rooms after the Crime Slot (CG-1).
-@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
-def test_cg1_same_seed_gives_the_same_rooms_after_the_crime_slot(layout: Layout, num_suspects: int, num_murderers: int):
-    for seed in SEEDS:
-        first_case = case_after_crime_slot(layout, num_suspects, num_murderers, seed)
-        second_case = case_after_crime_slot(layout, num_suspects, num_murderers, seed)
-
-        assert first_case == second_case
-
 # Defining a Test Function to check that a Crime Room outside the House is rejected, and so is a Suspect without a Place in the House.
 # The Crime Room is checked with every Suspect and with the Murderer alone, so the error cannot come ONLY from an Innocent Suspect.
 # Each Suspect is checked with a missing Place and with a Place outside the House, and the error must name that Suspect.
@@ -839,15 +801,6 @@ def test_timeline_keeps_the_rules_of_movement(layout: Layout, num_suspects: int,
 
             for time_slot in range(crime.slot + 1, len(TIME_SLOTS)):
                 assert grid.room_of(innocent_id, time_slot) in reachable_room_ids
-
-# Defining a Test Function to check that the same Seed always gives the same Timeline Grid in one Python process (CG-1).
-@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
-def test_cg1_same_seed_gives_the_same_timeline(layout: Layout, num_suspects: int, num_murderers: int):
-    for seed in SEEDS:
-        first_case = case_timeline(layout, num_suspects, num_murderers, seed)
-        second_case = case_timeline(layout, num_suspects, num_murderers, seed)
-
-        assert first_case == second_case
 
 
 # Defining a Test Function to check 'find_witnesses' on every generated Case against the Room Rosters (CG-16, KN-3).
@@ -980,15 +933,6 @@ def test_cg16_sightings_cover_every_meeting(layout: Layout, crime_room_id: str):
 
     assert picked_sightings == all_sightings
 
-# Defining a Test Function to check that the same Seed always picks the same Sighting (CG-1).
-@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
-def test_cg1_same_seed_picks_the_same_sighting(layout: Layout, num_suspects: int, num_murderers: int):
-    for seed in SEEDS:
-        first_case = case_sighting(layout, num_suspects, num_murderers, seed)
-        second_case = case_sighting(layout, num_suspects, num_murderers, seed)
-
-        assert first_case == second_case
-
 
 # Helper function to build the Case up to the Crime Slot from one Seed, pick its Sighting, and then walk every Person back to it.
 def case_before_sighting(
@@ -1029,15 +973,6 @@ def test_cg15_walks_to_the_sighting_use_the_doors(layout: Layout, num_suspects: 
 
             for time_slot in range(crime.slot):
                 assert walk[time_slot + 1] == walk[time_slot] or walk[time_slot + 1] in layout.neighbors(walk[time_slot])
-
-# Defining a Test Function to check that the same Seed always gives the same Sighting and the same walks to it (CG-1).
-@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
-def test_cg1_same_seed_gives_the_same_walks_to_the_sighting(layout: Layout, num_suspects: int, num_murderers: int):
-    for seed in SEEDS:
-        first_case = case_before_sighting(layout, num_suspects, num_murderers, seed)
-        second_case = case_before_sighting(layout, num_suspects, num_murderers, seed)
-
-        assert first_case == second_case
 
 # Defining a Test Function to check that a Sighting that cannot happen in this Case is rejected.
 # a. A Witness who is the Victim or has no Place, and a Sighting before the Night or at the Crime Slot.
@@ -1155,8 +1090,9 @@ def case_of_seed(
 
     return layout, suspects, crime, grid
 
-# Defining a Test Function to check that 'generate_case' returns the Case of the first Seed that is not rejected (CG-1, CG-12).
+# Defining a Test Function to check that 'generate_case' returns the Case of the first Seed that is not rejected (CG-12).
 # Every Seed before it, from 'first_seed' on, must be rejected, and the Case must be exactly the Case of its own Seed.
+# 'generate_case' and 'case_of_seed' build each Case on their own, so they agree ONLY if every step gives the same result for the same Seed (CG-1).
 @pytest.mark.parametrize("num_suspects, num_murderers", ROLE_COUNTS)
 def test_cg12_generate_case_takes_the_first_accepted_seed(num_suspects: int, num_murderers: int):
     for first_seed in SEEDS:
