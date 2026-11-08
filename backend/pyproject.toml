@@ -21,8 +21,15 @@ dev = [
     # Test Runner and the HTTP Client behind FastAPI's TestClient.
     "pytest==9.2.0",
     "httpx2==2.16.0",
+
+    # Runs the tests in several Processes at once, as many as '-n' asks for.
+    "pytest-xdist==3.8.0",
 ]
 
 # The importable package lives in 'src/alibi/'
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Settings for pytest: Run the tests in 10 Worker Processes at once, through pytest-xdist. '-n 0' runs them in one Process.
+[tool.pytest.ini_options]
+addopts = "-n 10"
