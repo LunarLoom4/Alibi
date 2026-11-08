@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .types import Room
 
@@ -13,18 +13,41 @@ class Layout:
     rooms: tuple[Room, ...]
     doors: tuple[tuple[str, str], ...]
 
-    # Returns the IDs of the Rooms that have a Door to the given Room.
-    def neighbors(self, room_id: str) -> set[str]:
-        result = set()
+    # Tables worked out in '__post_init__'. They are not given when a Layout is made, and they are left out of its comparison and printing.
+    neighbors_of_room: dict[str, set[str]] = field(init = False, repr = False, compare = False)
+    distances_of_room: dict[str, dict[str, int]] = field(init = False, repr = False, compare = False)
 
+    # Works out the Neighbors of every Room and the fewest Doors between every two Rooms.
+    # The Case Generator asks for both very often, so it reads them from these tables instead of walking the Doors again and again.
+    def __post_init__(self):
+        # 1. The Neighbors of every Room.
+        neighbors_of_room = {}
+
+        for room in self.rooms:
+            neighbors_of_room[room.id] = set()
+
+        # A Door must join two Rooms of this House.
         for room_a, room_b in self.doors:
-            if room_a == room_id:
-                result.add(room_b)
+            if room_a not in neighbors_of_room or room_b not in neighbors_of_room:
+                raise ValueError(f"The Door '{room_a}' - '{room_b}' joins a Room that is not in Layout '{self.id}'.")
 
-            elif room_b == room_id:
-                result.add(room_a)
+            neighbors_of_room[room_a].add(room_b)
+            neighbors_of_room[room_b].add(room_a)
 
-        return result
+        # The Layout is frozen, so the tables are set through 'object.__setattr__', as in 'TimelineGrid'.
+        object.__setattr__(self, "neighbors_of_room", neighbors_of_room)
+
+        # 2. The fewest Doors from every Room to every Room.
+        distances_of_room = {}
+
+        for room in self.rooms:
+            distances_of_room[room.id] = self.walk_out_ring_by_ring(room.id)
+
+        object.__setattr__(self, "distances_of_room", distances_of_room)
+
+    # Returns the IDs of the Rooms that have a Door to the given Room, as a new set that the caller may change freely.
+    def neighbors(self, room_id: str) -> set[str]:
+        return set(self.neighbors_of_room.get(room_id, set()))
 
     # Returns the IDs of the Rooms that a Person in the given Room can walk to without entering the avoided Room, the given Room included.
     # After the Crime Slot, an Innocent Suspect who walked through the Crime Room would find the Body.
@@ -59,12 +82,17 @@ class Layout:
     # Returns the fewest Doors a Person must walk through to get from the given Room to each Room of the House.
     # Before the Crime Slot, a Person goes through at most one Door per Time Slot (CG-15), so this is the fewest Time Slots too.
     def distances_from(self, room_id: str) -> dict[str, int]:
-        # 1. The walk starts in a Room of the House.
-        if room_id not in [room.id for room in self.rooms]:
+        # The walk starts in a Room of the House.
+        if room_id not in self.distances_of_room:
             raise ValueError(f"'{room_id}' is not a Room of Layout '{self.id}'.")
 
-        # 2. Walk out ring by ring: Every Room behind a Door of the last ring, and not found before, is one Door further away.
-        # The Neighbors are sorted, so the Rooms come back in the same order in every Python process (CG-1).
+        # A new dict, so the caller may change it freely.
+        return dict(self.distances_of_room[room_id])
+
+    # Walks out from a Room ring by ring: Every Room behind a Door of the last ring, and not found before, is one Door further away.
+    # The Neighbors are sorted, so the Rooms come back in the same order in every Python process (CG-1).
+    # Only '__post_init__' calls it, always with a Room of the House.
+    def walk_out_ring_by_ring(self, room_id: str) -> dict[str, int]:
         distances = {room_id: 0}
         last_ring = [room_id]
 

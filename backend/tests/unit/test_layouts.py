@@ -128,6 +128,28 @@ def test_neighbors_match_the_doors(layout: Layout):
         assert len(layout.neighbors(room.id)) == len(doors_of_room)
         assert room.id not in layout.neighbors(room.id)
 
+# Defining a Test Function to check that changing the set from 'neighbors' never changes the Layout itself.
+# The Test changes a new Layout, so a wrong change cannot reach the Layouts that the other Tests use.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_neighbors_gives_a_new_set_each_time(layout: Layout):
+    new_layout = Layout(id = layout.id, rooms = layout.rooms, doors = layout.doors)
+
+    for room in new_layout.rooms:
+        neighbors_before = set(new_layout.neighbors(room.id))
+        new_layout.neighbors(room.id).add("attic")
+
+        assert new_layout.neighbors(room.id) == neighbors_before
+
+# Defining a Test Function to check that a Layout with a Door to a Room outside the House is rejected when it is made.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_layout_rejects_a_door_to_a_room_outside_the_house(layout: Layout):
+    for room in layout.rooms:
+        with pytest.raises(ValueError):
+            Layout(id = layout.id, rooms = layout.rooms, doors = layout.doors + ((room.id, "attic"),))
+
+        with pytest.raises(ValueError):
+            Layout(id = layout.id, rooms = layout.rooms, doors = layout.doors + (("attic", room.id),))
+
 # Helper function to find, by hand over the Doors, the Rooms a Person can walk to from a Room without entering the avoided Room.
 # It reads the Doors directly instead of 'neighbors', so it checks 'reachable_rooms' in a second, independent way.
 def rooms_reachable_by_hand(layout: Layout, room_id: str, avoided_room_id: str) -> set[str]:
@@ -233,6 +255,18 @@ def test_distances_from_go_both_ways_round_a_ring(num_rooms: int):
             steps = (number - start) % num_rooms
 
             assert distances[room_ids[number]] == min(steps, num_rooms - steps)
+
+# Defining a Test Function to check that changing the dict from 'distances_from' never changes the Layout itself.
+# The Test changes a new Layout, so a wrong change cannot reach the Layouts that the other Tests use.
+@pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
+def test_distances_from_gives_a_new_dict_each_time(layout: Layout):
+    new_layout = Layout(id = layout.id, rooms = layout.rooms, doors = layout.doors)
+
+    for room in new_layout.rooms:
+        distances_before = dict(new_layout.distances_from(room.id))
+        new_layout.distances_from(room.id)[room.id] = 99
+
+        assert new_layout.distances_from(room.id) == distances_before
 
 # Defining a Test Function to check that 'distances_from' rejects a Room outside the House.
 @pytest.mark.parametrize("layout", ALL_LAYOUTS, ids = LAYOUT_IDS)
