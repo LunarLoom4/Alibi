@@ -520,7 +520,10 @@ for num_suspects in range(MIN_SUSPECTS, MAX_SUSPECTS + 1):
                 crime = pick_crime(layout, rng)
                 grid = build_timeline(layout, suspects, crime, rng)
 
-                print(sorted(grid.locations.items()))
+                if grid is None:
+                    print("Rejected")
+                else:
+                    print(sorted(grid.locations.items()))
 """
 
 # Defining a Test Function to check that the same Seed gives the same Case in every new Python process (CG-1).
@@ -755,7 +758,7 @@ def case_timeline(
     num_suspects: int,
     num_murderers: int,
     seed: int
-) -> tuple[tuple[Suspect, ...], Crime, TimelineGrid]:
+) -> tuple[tuple[Suspect, ...], Crime, TimelineGrid | None]:
     rng = random.Random(seed)
     suspects = pick_roles(num_suspects, num_murderers, rng)
     crime = pick_crime(layout, rng)
@@ -764,7 +767,7 @@ def case_timeline(
     return suspects, crime, grid
 
 # Defining a Test Function to check that each Row of the Timeline Grid is the three parts of the Night, joined in order.
-# It replays the Seed with the three steps one by one, in the same order and with the same Random Number Generator.
+# It replays the Seed with the four steps one by one, in the same order and with the same Random Number Generator.
 @pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
 def test_timeline_joins_the_three_parts_in_order(layout: Layout, num_suspects: int, num_murderers: int):
     for seed in SEEDS:
@@ -774,7 +777,14 @@ def test_timeline_joins_the_three_parts_in_order(layout: Layout, num_suspects: i
         pick_roles(num_suspects, num_murderers, rng)
         pick_crime(layout, rng)
         places = place_at_crime_slot(layout, suspects, crime, rng)
-        earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
+        sighting = pick_sighting(layout, suspects, places, crime, rng)
+
+        # A Case where no Innocent Suspect can see the Victim alive is rejected (CG-16).
+        if sighting is None:
+            assert grid is None
+            continue
+
+        earlier_rooms = place_before_crime_slot(layout, places, crime, rng, sighting)
         later_rooms = place_after_crime_slot(layout, suspects, places, crime, rng)
 
         # The Rows come in the order of the IDs, the Victim first, so their order never gives away the Murderers.
@@ -792,6 +802,11 @@ def test_timeline_joins_the_three_parts_in_order(layout: Layout, num_suspects: i
 def test_timeline_keeps_the_rules_of_movement(layout: Layout, num_suspects: int, num_murderers: int):
     for seed in SEEDS:
         suspects, crime, grid = case_timeline(layout, num_suspects, num_murderers, seed)
+
+        # A rejected Case has no Timeline Grid to check.
+        if grid is None:
+            continue
+
         murderer_ids = {suspect.id for suspect in suspects if suspect.is_murderer}
         innocent_ids = {suspect.id for suspect in suspects if not suspect.is_murderer}
 
@@ -838,6 +853,11 @@ def test_cg1_same_seed_gives_the_same_timeline(layout: Layout, num_suspects: int
 def test_cg16_witnesses_match_the_rosters(layout: Layout, num_suspects: int, num_murderers: int):
     for seed in SEEDS:
         suspects, crime, grid = case_timeline(layout, num_suspects, num_murderers, seed)
+
+        # A rejected Case has no Timeline Grid to check.
+        if grid is None:
+            continue
+
         innocent_ids = {suspect.id for suspect in suspects if not suspect.is_murderer}
         expected_witnesses = {}
 
@@ -1056,3 +1076,20 @@ def test_place_before_crime_slot_rejects_an_impossible_sighting(layout: Layout, 
 
                 with pytest.raises(ValueError):
                     place_before_crime_slot(layout, places, crime, random.Random(0), too_far_for_the_witness)
+
+
+# Defining a Test Function to check that every Timeline Grid has one or more Witnesses who saw the Victim alive (CG-16).
+# It also checks that at most a quarter of the Seeds are rejected for lack of a possible Witness.
+@pytest.mark.parametrize("layout, num_suspects, num_murderers", PLACEMENT_CASES)
+def test_cg16_every_timeline_has_a_witness(layout: Layout, num_suspects: int, num_murderers: int):
+    num_rejected = 0
+
+    for seed in SEEDS:
+        suspects, crime, grid = case_timeline(layout, num_suspects, num_murderers, seed)
+
+        if grid is None:
+            num_rejected += 1
+        else:
+            assert find_witnesses(grid, suspects, crime) != {}
+
+    assert num_rejected <= len(SEEDS) // 4, f"{num_rejected} of {len(SEEDS)} Seeds were rejected."

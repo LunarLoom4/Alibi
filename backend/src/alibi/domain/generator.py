@@ -251,17 +251,24 @@ def place_after_crime_slot(
 
 # Builds the Timeline Grid of a Case: The Room of every Person at every Time Slot of the Night.
 # The Places at the Crime Slot come first, because they decide the solution (CG-11), and the rest of the Night is built around them.
-def build_timeline(layout: Layout, suspects: tuple[Suspect, ...], crime: Crime, rng: random.Random) -> TimelineGrid:
+# Returns None when no Innocent Suspect can see the Victim alive (CG-16), and then the Case Generator tries the next Seed.
+def build_timeline(layout: Layout, suspects: tuple[Suspect, ...], crime: Crime, rng: random.Random) -> TimelineGrid | None:
     # 1. Place every Person at the Crime Slot (CG-4, CG-5, CG-6).
     places = place_at_crime_slot(layout, suspects, crime, rng)
 
-    # 2. Walk every Person back from their Place through the Doors of the House (CG-15).
-    earlier_rooms = place_before_crime_slot(layout, places, crime, rng)
+    # 2. Pick where and when an Innocent Suspect sees the Victim alive (CG-16).
+    sighting = pick_sighting(layout, suspects, places, crime, rng)
 
-    # 3. Place every Person after the Crime Slot: The Victim stays in the Crime Room (CG-3), and no Innocent Suspect enters it (CG-18).
+    if sighting is None:
+        return None
+
+    # 3. Walk every Person back from their Place through the Doors of the House (CG-15), the Victim and the Witness through the Sighting (CG-16).
+    earlier_rooms = place_before_crime_slot(layout, places, crime, rng, sighting)
+
+    # 4. Place every Person after the Crime Slot: The Victim stays in the Crime Room (CG-3), and no Innocent Suspect enters it (CG-18).
     later_rooms = place_after_crime_slot(layout, suspects, places, crime, rng)
 
-    # 4. Join the three parts into one Row of Room IDs for each Person, from the first to the last Time Slot.
+    # 5. Join the three parts into one Row of Room IDs for each Person, from the first to the last Time Slot.
     # The Rows follow the order of the IDs, the Victim first, so the order of the Rows never tells who the Murderers are.
     locations = {}
 
