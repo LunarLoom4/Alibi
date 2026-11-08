@@ -886,7 +886,6 @@ def test_cg16_witnesses_saw_the_victim_before_the_crime_slot(crime_slot: int, si
     for time_slot in range(len(TIME_SLOTS)):
         if time_slot == sighting_slot:
             innocent_rooms.append("hall")
-
         else:
             innocent_rooms.append("study")
 

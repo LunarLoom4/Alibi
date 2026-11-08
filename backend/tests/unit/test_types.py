@@ -28,7 +28,6 @@ def test_suspect_is_created_only_with_an_allowed_role(is_murderer: bool, is_red_
         # A frozen Suspect keeps their Role for the whole Case.
         with pytest.raises(FrozenInstanceError):
             suspect.is_murderer = not is_murderer
-
     else:
         with pytest.raises(ValueError):
             Suspect(id = "suspect_1", is_murderer = is_murderer, is_red_herring = is_red_herring)
@@ -85,7 +84,6 @@ def test_cg3_grid_needs_one_room_per_time_slot(row_length: int, tested_person_id
         grid = TimelineGrid(locations = locations)
 
         assert grid.locations[tested_person_id] == locations[tested_person_id]
-
     else:
         with pytest.raises(ValueError):
             TimelineGrid(locations = locations)
@@ -218,7 +216,6 @@ def test_cg13_cg16_crime_slot_lies_in_its_window(first_slot: int, crime_slot: in
         # A frozen Crime never changes during the Game.
         with pytest.raises(FrozenInstanceError):
             crime.slot = 0
-
     else:
         with pytest.raises(ValueError):
             Crime(slot = crime_slot, room_id = "hall", window = window)
